@@ -56,10 +56,21 @@ CALLMEBOT_PHONE = "61477282003"
 
 # ═══════════════════════════════════════════════════════════════ fetchers
 
-def _get(url, headers=None):
-    req = Request(url, headers=headers or {})
-    with urlopen(req, timeout=30) as r:
-        return json.loads(r.read().decode())
+def _get(url, headers=None, retries=3, delay=10):
+    """GET with retries. Raises on final failure."""
+    import time
+    last_err = None
+    for attempt in range(retries):
+        try:
+            req = Request(url, headers=headers or {})
+            with urlopen(req, timeout=30) as r:
+                return json.loads(r.read().decode())
+        except (HTTPError, URLError) as e:
+            last_err = e
+            if attempt < retries - 1:
+                print(f"  Retry {attempt+1}/{retries-1} for {url[:60]}... ({e})")
+                time.sleep(delay)
+    raise last_err
 
 
 def fetch_wind():
@@ -106,9 +117,14 @@ def fetch_tides(start_ts, end_ts):
 
 
 def fetch_solunar(date):
-    """solunar.org — bite windows for one central point (per day)."""
+    """solunar.org — bite windows for one central point (per day).
+    Returns empty dict on failure so wind/swell/tide scoring still runs."""
     url = f"https://api.solunar.org/solunar/-27.45,153.2,{date:%Y%m%d},10"
-    return _get(url)
+    try:
+        return _get(url, retries=2, delay=5)
+    except Exception as e:
+        print(f"  WARNING: solunar.org unavailable for {date} ({e}) — bite periods skipped.")
+        return {}
 
 
 # ═══════════════════════════════════════════════════════════════ parsers
