@@ -12,6 +12,7 @@ Required env vars:
 """
 
 import os, sys, json, datetime as dt
+import ephem
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from urllib.error import URLError, HTTPError
@@ -116,15 +117,69 @@ def fetch_tides(start_ts, end_ts):
     return out
 
 
-def fetch_solunar(date):
-    """solunar.org — bite windows for one central point (per day).
-    Returns empty dict on failure so wind/swell/tide scoring still runs."""
-    url = f"https://api.solunar.org/solunar/-27.45,153.2,{date:%Y%m%d},10"
-    try:
-        return _get(url, retries=2, delay=5)
-    except Exception as e:
-        print(f"  WARNING: solunar.org unavailable for {date} ({e}) — bite periods skipped.")
-        return {}
+def _moon_phase_name(obs):
+    """Derive moon phase name from illumination + waxing/waning."""
+    m = ephem.Moon(); m.compute(obs)
+    illum = m.phase
+    obs2 = ephem.Observer()
+    obs2.lat, obs2.lon, obs2.elev, obs2.pressure = obs.lat, obs.lon, obs.elev, obs.pressure
+    obs2.date = ephem.Date(obs.date) - 1
+    m2 = ephem.Moon(); m2.compute(obs2)
+    waxing = m.phase > m2.phase
+    if illum < 2:  return "New Moon"
+    if illum > 98: return "Full Moon"
+    if illum < 45: return "Waxing Crescent"  if waxing else "Waning Crescent"
+    if illum < 55: return "First Quarter"    if waxing else "Last Quarter"
+    return         "Waxing Gibbous"          if waxing else "Waning Gibbous"
+
+
+def calc_solunar(date):
+    """Compute solunar windows locally using ephem — no external API."""
+    lat, lng = -27.45, 153.2
+    # Set observer to Brisbane midnight in UTC
+    utc_start = dt.datetime.combine(date, dt.time(0), TZ).astimezone(dt.timezone.utc)
+
+    obs = ephem.Observer()
+    obs.lat      = str(lat)
+    obs.lon      = str(lng)
+    obs.elev     = 0
+    obs.pressure = 0   # skip refraction
+    obs.date     = utc_start.strftime("%Y/%m/%d %H:%M:%S")
+
+    def to_local(edate):
+        return (ephem.Date(edate).datetime()
+                .replace(tzinfo=dt.timezone.utc)
+                .astimezone(TZ))
+
+    def hm(local_dt, delta_min=0):
+        t = local_dt + dt.timedelta(minutes=delta_min)
+        return f"{t.hour:02d}:{t.minute:02d}"
+
+    transit    = to_local(obs.next_transit(ephem.Moon()))
+    antitrans  = to_local(obs.next_antitransit(ephem.Moon()))
+    obs.date   = utc_start.strftime("%Y/%m/%d %H:%M:%S")
+    moonrise   = to_local(obs.next_rising(ephem.Moon()))
+    obs.date   = utc_start.strftime("%Y/%m/%d %H:%M:%S")
+    moonset    = to_local(obs.next_setting(ephem.Moon()))
+    obs.date   = utc_start.strftime("%Y/%m/%d %H:%M:%S")
+    sunrise    = to_local(obs.next_rising(ephem.Sun()))
+    obs.date   = utc_start.strftime("%Y/%m/%d %H:%M:%S")
+    sunset     = to_local(obs.next_setting(ephem.Sun()))
+    obs.date   = utc_start.strftime("%Y/%m/%d %H:%M:%S")
+
+    return {
+        "moonPhase":    _moon_phase_name(obs),
+        "sunRise":      hm(sunrise),
+        "sunSet":       hm(sunset),
+        "major1Start":  hm(transit,   -60),   # moon overhead ± 1h
+        "major1Stop":   hm(transit,   +60),
+        "major2Start":  hm(antitrans, -60),   # moon underfoot ± 1h
+        "major2Stop":   hm(antitrans, +60),
+        "minor1Start":  hm(moonrise,  -45),   # moonrise ± 45 min
+        "minor1Stop":   hm(moonrise,  +45),
+        "minor2Start":  hm(moonset,   -45),   # moonset ± 45 min
+        "minor2Stop":   hm(moonset,   +45),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════ parsers
@@ -275,7 +330,10 @@ def find_best(today, solunar_days, tides_by_ref, wind_spots, swell_spots, top=5)
     """
     Score every spot × day × hour, pick best window per spot per day,
     return top-N across the whole forecast.
+    Uses a lower threshold when solunar data is unavailable.
     """
+    solunar_ok = any(bool(s) for s in solunar_days)
+    threshold  = 3 if solunar_ok else 1   # relax when bite data is missing
     candidates = []
 
     for d in range(DAYS):
@@ -306,7 +364,7 @@ def find_best(today, solunar_days, tides_by_ref, wind_spots, swell_spots, top=5)
                         "unsafe":    unsafe,
                     }
 
-            if best and best["score"] >= 3:
+            if best and best["score"] >= threshold:
                 candidates.append(best)
 
     candidates.sort(key=lambda w: w["score"], reverse=True)
@@ -320,6 +378,8 @@ def format_message(combos, solunar_days):
     moon = solunar_days[0].get("moonPhase", "")
     if moon:
         lines.append(f"🌙 {moon}")
+    if not any(bool(s) for s in solunar_days):
+        lines.append("⚠️ Bite times unavailable (solunar.org down) — wind/tide only")
     lines.append("")
 
     if not combos:
@@ -371,7 +431,7 @@ def main():
     wind_raw    = fetch_wind()
     swell_raw   = fetch_swell()
     tide_raw    = fetch_tides(start_ts, end_ts)
-    sol_days    = [fetch_solunar(today + dt.timedelta(days=d)) for d in range(DAYS)]
+    sol_days    = [calc_solunar(today + dt.timedelta(days=d)) for d in range(DAYS)]
 
     wind_spots  = parse_hourly(wind_raw,  ["wind_speed_10m","wind_direction_10m","wind_gusts_10m"])
     swell_spots = parse_hourly(swell_raw, ["swell_wave_height","wave_height"])
