@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 TZ          = ZoneInfo("Australia/Brisbane")   # UTC+10, no DST
 DAYS        = 3
 DAY_START   = 4     # evaluate windows between these hours only
-DAY_END     = 20
+DAY_END     = 21
 
 WIND_OK     = 15    # km/h
 WIND_BAD    = 25
@@ -31,19 +31,19 @@ SWELL_OK    = 1.0   # metres — open/semi spots only
 SWELL_BAD   = 2.0
 
 SPOTS = [
-    {"name": "Fingal Head",     "lat": -28.1992, "lng": 153.5667, "exp": "open"},
-    {"name": "Snapper Rocks",   "lat": -28.1620, "lng": 153.5520, "exp": "open"},
-    {"name": "Burleigh Heads",  "lat": -28.0930, "lng": 153.4560, "exp": "open"},
-    {"name": "GC Seaway",       "lat": -27.9380, "lng": 153.4290, "exp": "semi"},
-    {"name": "Jumpinpin",       "lat": -27.7200, "lng": 153.4300, "exp": "semi"},
-    {"name": "Point Lookout",   "lat": -27.4300, "lng": 153.5320, "exp": "open"},
-    {"name": "Manly (bay)",     "lat": -27.4540, "lng": 153.1900, "exp": "bay"},
-    {"name": "Redcliffe",       "lat": -27.2540, "lng": 153.1080, "exp": "bay"},
-    {"name": "Bribie (Woorim)", "lat": -27.0800, "lng": 153.1990, "exp": "semi"},
-    {"name": "Caloundra",       "lat": -26.8030, "lng": 153.1430, "exp": "open"},
-    {"name": "Mooloolaba",      "lat": -26.6820, "lng": 153.1190, "exp": "open"},
-    {"name": "Maroochydore",    "lat": -26.6490, "lng": 153.0990, "exp": "semi"},
-    {"name": "Noosa NP",        "lat": -26.3850, "lng": 153.1000, "exp": "open"},
+    {"name": "Fingal Head",     "lat": -28.1992, "lng": 153.5667, "exp": "open", "type": "rock"},
+    {"name": "Snapper Rocks",   "lat": -28.1620, "lng": 153.5520, "exp": "open", "type": "rock"},
+    {"name": "Burleigh Heads",  "lat": -28.0930, "lng": 153.4560, "exp": "open", "type": "rock"},
+    {"name": "GC Seaway",       "lat": -27.9380, "lng": 153.4290, "exp": "semi", "type": "rock wall"},
+    {"name": "Jumpinpin",       "lat": -27.7200, "lng": 153.4300, "exp": "semi", "type": "estuary"},
+    {"name": "Point Lookout",   "lat": -27.4300, "lng": 153.5320, "exp": "open", "type": "rock"},
+    {"name": "Manly (bay)",     "lat": -27.4540, "lng": 153.1900, "exp": "bay",  "type": "jetty/beach"},
+    {"name": "Redcliffe",       "lat": -27.2540, "lng": 153.1080, "exp": "bay",  "type": "jetty/beach"},
+    {"name": "Bribie (Woorim)", "lat": -27.0800, "lng": 153.1990, "exp": "semi", "type": "beach/passage"},
+    {"name": "Caloundra",       "lat": -26.8030, "lng": 153.1430, "exp": "open", "type": "rock/beach"},
+    {"name": "Mooloolaba",      "lat": -26.6820, "lng": 153.1190, "exp": "open", "type": "rock/beach"},
+    {"name": "Maroochydore",    "lat": -26.6490, "lng": 153.0990, "exp": "semi", "type": "estuary/beach"},
+    {"name": "Noosa NP",        "lat": -26.3850, "lng": 153.1000, "exp": "open", "type": "rock/beach"},
 ]
 
 # Two Stormglass tide reference points — one open coast, one bay
@@ -321,6 +321,13 @@ def spot_modifier(spot, hour_key, wind_h, swell_h):
                 mod -= 2
             parts.append(f"{swell:.1f}m")
 
+    # Prime rock bonus: calm + offshore + low swell = ideal land-based conditions
+    if spot["type"] == "rock" and wind is not None and wind < 10 and offshore(wdir):
+        sw_val = (ss.get("swell_wave_height") or ss.get("wave_height")) if spot["exp"] != "bay" else 0
+        if sw_val is not None and sw_val < 0.8:
+            mod  += 1
+            parts.append("🎯prime")
+
     return mod, " | ".join(parts) or "no data", unsafe
 
 
@@ -393,7 +400,9 @@ def format_message(combos, solunar_days):
         flag    = " ⚠️ HIGH SWELL" if w["unsafe"] else ""
         why     = ", ".join(w["reasons"]) if w["reasons"] else "good combo"
 
-        lines.append(f"*{i}. {w['spot']}* — {day} {t_start}–{t_end}{flag}")
+        spot_type = next((s["type"] for s in SPOTS if s["name"] == w["spot"]), "")
+        type_tag  = f" ({spot_type})" if spot_type else ""
+        lines.append(f"*{i}. {w['spot']}*{type_tag} — {day} {t_start}–{t_end}{flag}")
         lines.append(f"   {w['cond']}  ({why})")
 
     return "\n".join(lines)
