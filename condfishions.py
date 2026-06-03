@@ -53,7 +53,6 @@ TIDE_REFS = {
 }
 TIDE_REF_MAP = {"open": "coast", "semi": "coast", "bay": "bay"}
 
-CALLMEBOT_PHONE = "61477282003"
 
 # ═══════════════════════════════════════════════════════════════ fetchers
 
@@ -410,23 +409,6 @@ def format_message(combos, solunar_days):
 
 # ═══════════════════════════════════════════════════════════════ delivery
 
-def send_whatsapp(message):
-    api_key = os.environ.get("CALLMEBOT_API_KEY", "")
-    if not api_key:
-        print("CALLMEBOT_API_KEY not set — printing message only:\n")
-        print(message)
-        return
-
-    params = urlencode({
-        "phone":  CALLMEBOT_PHONE,
-        "text":   message,
-        "apikey": api_key,
-    })
-    url = f"https://api.callmebot.com/whatsapp.php?{params}"
-    with urlopen(Request(url), timeout=30) as r:
-        print("WhatsApp sent:", r.read().decode()[:200])
-
-
 # ═══════════════════════════════════════════════════════════════ main
 
 def main():
@@ -452,10 +434,7 @@ def main():
     combos  = find_best(today, sol_days, tides_by_ref, wind_spots, swell_spots)
     message = format_message(combos, sol_days)
 
-    print("\n--- Message ---")
     print(message)
-    print("--- Sending ---")
-    send_whatsapp(message)
 
 
 if __name__ == "__main__":
