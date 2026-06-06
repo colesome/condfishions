@@ -321,7 +321,7 @@ def spot_modifier(spot, hour_key, wind_h, swell_h):
             parts.append(f"{swell:.1f}m")
 
     # Prime rock bonus: calm + offshore + low swell = ideal land-based conditions
-    if spot["type"] == "rock" and wind is not None and wind < 10 and offshore(wdir):
+    if spot["type"] == "rock" and wind is not None and wind < 10 and is_offshore(wdir):
         sw_val = (ss.get("swell_wave_height") or ss.get("wave_height")) if spot["exp"] != "bay" else 0
         if sw_val is not None and sw_val < 0.8:
             mod  += 1
