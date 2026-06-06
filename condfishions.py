@@ -332,16 +332,26 @@ def spot_modifier(spot, hour_key, wind_h, swell_h):
 
 # ═══════════════════════════════════════════════════════════════ ranking
 
-def find_best(today, solunar_days, tides_by_ref, wind_spots, swell_spots, top=5):
+def time_bucket(hour):
+    """Group hours into time-of-day windows for variety."""
+    if hour < 8:   return "dawn"
+    if hour < 11:  return "morning"
+    if hour < 14:  return "midday"
+    if hour < 17:  return "arvo"
+    return "dusk"
+
+
+def find_best(today, solunar_days, tides_by_ref, wind_spots, swell_spots, top=6):
     """
-    Score every spot × day × hour, pick best window per spot per day,
-    return top-N across the whole forecast.
-    Uses a lower threshold when solunar data is unavailable.
+    Score every spot × day × hour, then select a DIVERSE set of windows:
+    the best spot for each (day, time-of-day) window, so recommendations
+    span different times and places rather than clustering on one peak.
     """
     solunar_ok = any(bool(s) for s in solunar_days)
     threshold  = 3 if solunar_ok else 1   # relax when bite data is missing
-    candidates = []
 
+    # Best hour per (spot, day, time-of-day bucket) — keep ALL spots
+    cand = {}
     for d in range(DAYS):
         date = today + dt.timedelta(days=d)
         sol  = solunar_days[d]
@@ -353,28 +363,57 @@ def find_best(today, solunar_days, tides_by_ref, wind_spots, swell_spots, top=5)
             wind_h    = wind_spots[si]
             swell_h   = swell_spots[si]
 
-            best = None
             for hour in range(DAY_START, DAY_END + 1):
                 bs, reasons = base_score(hour, date, sol, day_tides)
                 hk = dt.datetime.combine(date, dt.time(hour)).strftime("%Y-%m-%dT%H:00")
                 mod, cond, unsafe = spot_modifier(spot, hk, wind_h, swell_h)
                 total = bs + mod
-                if best is None or total > best["score"]:
-                    best = {
-                        "spot":      spot["name"],
-                        "date":      date,
-                        "hour":      hour,
-                        "score":     total,
-                        "reasons":   reasons,
-                        "cond":      cond,
-                        "unsafe":    unsafe,
+                if total < threshold:
+                    continue
+                key = (si, d, time_bucket(hour))
+                if key not in cand or total > cand[key]["score"]:
+                    cand[key] = {
+                        "spot":    spot["name"],
+                        "date":    date,
+                        "hour":    hour,
+                        "score":   total,
+                        "reasons": reasons,
+                        "cond":    cond,
+                        "unsafe":  unsafe,
                     }
 
-            if best and best["score"] >= threshold:
-                candidates.append(best)
+    candidates = sorted(cand.values(), key=lambda w: w["score"], reverse=True)
 
-    candidates.sort(key=lambda w: w["score"], reverse=True)
-    return candidates[:top]
+    selected, used_slots, spot_count = [], set(), {}
+
+    # Pass 1: one window per (day, time-bucket), max 2 per spot → time + place variety
+    for w in candidates:
+        slot = (w["date"], time_bucket(w["hour"]))
+        if slot in used_slots or spot_count.get(w["spot"], 0) >= 2:
+            continue
+        selected.append(w)
+        used_slots.add(slot)
+        spot_count[w["spot"]] = spot_count.get(w["spot"], 0) + 1
+        if len(selected) >= top:
+            return selected
+
+    # Pass 2: allow repeat time-slots, keep the spot cap
+    for w in candidates:
+        if w in selected or spot_count.get(w["spot"], 0) >= 2:
+            continue
+        selected.append(w)
+        spot_count[w["spot"]] = spot_count.get(w["spot"], 0) + 1
+        if len(selected) >= top:
+            return selected
+
+    # Pass 3: fill with anything remaining
+    for w in candidates:
+        if w not in selected:
+            selected.append(w)
+            if len(selected) >= top:
+                break
+
+    return selected
 
 
 # ═══════════════════════════════════════════════════════════════ formatting
@@ -392,19 +431,25 @@ def format_message(combos, solunar_days):
         lines.append("No standout windows — conditions marginal everywhere.")
         return "\n".join(lines)
 
-    for i, w in enumerate(combos, 1):
-        t_start = f"{w['hour']:02d}:00"
-        t_end   = f"{min(w['hour'] + 2, 23):02d}:00"
-        day     = w["date"].strftime("%a %-d %b")
-        flag    = " ⚠️ HIGH SWELL" if w["unsafe"] else ""
-        why     = ", ".join(w["reasons"]) if w["reasons"] else "good combo"
+    # Group windows by day, list each day's options in time order
+    by_day = {}
+    for w in combos:
+        by_day.setdefault(w["date"], []).append(w)
 
-        spot_type = next((s["type"] for s in SPOTS if s["name"] == w["spot"]), "")
-        type_tag  = f" ({spot_type})" if spot_type else ""
-        lines.append(f"*{i}. {w['spot']}*{type_tag} — {day} {t_start}–{t_end}{flag}")
-        lines.append(f"   {w['cond']}  ({why})")
+    for date in sorted(by_day):
+        lines.append(f"*{date:%a %-d %b}*")
+        for w in sorted(by_day[date], key=lambda x: x["hour"]):
+            t_start   = f"{w['hour']:02d}:00"
+            t_end     = f"{min(w['hour'] + 2, 23):02d}:00"
+            flag      = " ⚠️HIGH SWELL" if w["unsafe"] else ""
+            why       = ", ".join(w["reasons"]) if w["reasons"] else "good combo"
+            spot_type = next((s["type"] for s in SPOTS if s["name"] == w["spot"]), "")
+            type_tag  = f" ({spot_type})" if spot_type else ""
+            lines.append(f"  • {t_start}–{t_end} {w['spot']}{type_tag}{flag}")
+            lines.append(f"     {w['cond']} — {why}")
+        lines.append("")
 
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip()
 
 
 # ═══════════════════════════════════════════════════════════════ delivery
