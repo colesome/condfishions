@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f46e5"/><stop offset=".55" stop-color="#ec4899"/><stop offset="1" stop-color="#fb923c"/></linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0ea5e9"/><stop offset="1" stop-color="#0369a1"/></linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+  <circle cx="380" cy="660" r="170" fill="#fde68a"/>
+  <rect y="660" width="1024" height="364" fill="url(#sea)"/>
+  <path d="M0 680 C120 650 240 710 360 680 C480 650 600 710 720 680 C840 650 940 700 1024 680 L1024 700 L0 700 Z" fill="#7dd3fc"/>
+  <!-- rod bending -->
+  <path d="M900 900 C820 600 700 330 470 200" fill="none" stroke="#1f2937" stroke-width="30" stroke-linecap="round"/>
+  <path d="M470 200 C560 360 640 560 660 790" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="660" cy="800" r="16" fill="#fff"/>
+  <ellipse cx="660" cy="830" rx="70" ry="16" fill="none" stroke="#fff" stroke-width="7" opacity=".8"/>
+</svg>
