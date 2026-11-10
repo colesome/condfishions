@@ -1,12 +1,13 @@
-export type WindowId = "next6" | "today" | "tonight" | "tomorrow" | "next3" | "weekend";
+export type WindowId = "next6" | "today" | "tonight" | "tomorrow" | "next3" | "weekend" | "week";
 
+/** Next 3 days is the default: wind and swell forecasts are solid out to ~3 days and get
+ *  noticeably less reliable after that (tides and sun/moon stay exact). */
 export const WINDOWS: { id: WindowId; label: string }[] = [
-  { id: "next6", label: "Next 6 h" },
+  { id: "next3", label: "Next 3 days" },
   { id: "today", label: "Today" },
-  { id: "tonight", label: "Tonight" },
   { id: "tomorrow", label: "Tomorrow" },
   { id: "weekend", label: "Weekend" },
-  { id: "next3", label: "3 days" },
+  { id: "week", label: "7 days" },
 ];
 
 const H = 3600_000;
@@ -36,6 +37,8 @@ export function windowRange(id: WindowId, now: Date): [Date, Date] {
       return [midnight(now, 1), midnight(now, 2)];
     case "next3":
       return [blockStart, new Date(now.getTime() + 72 * H)];
+    case "week":
+      return [blockStart, new Date(now.getTime() + 7 * 24 * H)];
     case "weekend": {
       const dow = now.getDay(); // 0 Sun .. 6 Sat
       if (dow === 6 || dow === 0) return [blockStart, midnight(now, dow === 6 ? 2 : 1)];
@@ -88,4 +91,13 @@ export function fmtWhen(iso: string, hours = 3, now = new Date()): string {
   const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
   const rel = sameDay(d, now) ? "Today, " : sameDay(d, tomorrow) ? "Tomorrow, " : "";
   return `${rel}${date} · ${hShort(d)} – ${hShort(end)}`;
+}
+
+/** Short form for small pills: "Fri 6am". */
+export function fmtShort(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const day = sameDay(d, now) ? "Today" : sameDay(d, tomorrow) ? "Tmrw"
+    : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+  return `${day} ${hm(d)}`;
 }

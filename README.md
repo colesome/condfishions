@@ -55,21 +55,26 @@ stored for the learning layer but isn't shown or used for ranking.
 
 ## Phone app (`web/`)
 
-An installable web app (PWA) hosted free on GitHub Pages. You add it to your iPhone home
-screen and it opens full-screen like any other app. Only your login can see data.
+An installable web app (PWA) on GitHub Pages: add it to your iPhone home screen and it runs
+full-screen like any app. Only your login can see data. Three tabs:
 
-- **Fish:** spots ranked by conditions rating at their best 3-hour window, with the date and time, how
-  far away, the species likely there and why. Saltwater by default, Freshwater toggle.
-- **Spot page:** a 7-day strip of 3-hour scores. Tap a block for each species' score, chance and
-  reasons, plus wind, sea, tide, water temp and rain. Directions link.
-- **Location:** if "Use my current location" fails on iPhone, allow it under Settings → Privacy &
-  Security → Location Services → Safari Websites → *While Using the App*.
-- **Map:** spots coloured by score; out-of-range spots greyed. **＋ Add a spot** lets you tap a
-  location and describe it (type, which way you cast, exposure, species). Scored from the next run.
-- **Places:** change home and travel range (30 min – 7 h), save places (Home, Holiday…),
-  search a town, save where you are, or **Use my current location** while travelling.
-  **Refresh now** triggers a scoring run straight away.
-- Works offline with your last results (handy on Moreton or Straddie).
+- **Fish** — the best spots over the **next 3 days** (default; forecasts are most reliable out to
+  about 3 days), grouped into five bands — 🔥 Tight Lines, 🎣 Pretty Good, 🤞 Worth a Crack,
+  😐 Average, 💤 Wouldn't Bother — closest first in each band. Each spot shows its best time plus
+  the best time on other days ("Also: Fri 6am · 78"), so you don't miss a better window.
+  Saltwater by default, Freshwater toggle; Map button for the map / adding your own spots.
+- **Spot page** — *Times* (3-hour strip per day; tap for every species' rating, reasons and
+  conditions), *Tide* (the day's tide curve with highs/lows, the selected time highlighted and
+  "now" marked), *Photos* (your catches here) and your record ("6 trips · fish on 4").
+  Big **Go fish here** button.
+- **Trips** — the trip in progress: **Log a catch** (photo, species, length, kept/released) or
+  **Finish — caught nothing**, then a 30-second review pre-filled from the forecast
+  (wind, wind direction, sea, water clarity, bait, method, stars, notes). Works offline — logs
+  queue on the phone and upload when you're back in signal. History of finished trips below.
+- **Settings** — home, saved places, travel range, use-my-location, refresh.
+
+Every trip stores the rating the app showed *before* you fished, your observations, and (overnight)
+measured conditions from Open-Meteo — the three things the learning layer will compare.
 
 ## Setup (one-off, about 20 minutes)
 

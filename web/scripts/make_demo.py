@@ -16,3 +16,8 @@ for name in ("spots", "species", "forecast_scores"):
         rows = [{k: r[k] for k in ("id", "name", "base_rate", "notes")} for r in rows]
     (dst / f"{name}.json").write_text(json.dumps(rows, separators=(",", ":")))
     print(name, len(rows))
+tides = src / "tides.json"
+if tides.exists():
+    rows = json.loads(tides.read_text())
+    (dst / "tides.json").write_text(json.dumps({r["spot_id"]: {"series": r["series"], "extremes": r["extremes"]} for r in rows}))
+    print("tides", len(rows))

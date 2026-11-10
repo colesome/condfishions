@@ -77,6 +77,51 @@ export interface SpotWindow {
   safety: "ok" | "caution";
   safety_text: string | null;
   species: SpeciesScore[];
+  alt_blocks?: { block_start: string; block_hours: number; score: number }[];
 }
 
 export type Water = "salt" | "fresh";
+
+export interface Tide {
+  series: [string, number][];
+  extremes: [string, "high" | "low", number][];
+}
+
+export interface Trip {
+  id: string;
+  client_id: string;
+  spot_id: string;
+  start_ts: string;
+  end_ts: string | null;
+  targeted_species: string[];
+  method: "lure" | "bait" | "fly" | "mixed" | null;
+  why_went: string | null;
+  score_shown: number | null;
+  model_version_shown: string | null;
+  checkin_lat: number | null;
+  checkin_lon: number | null;
+  skunked: boolean | null;
+  notes: string | null;
+}
+
+export interface Catch {
+  id: string;
+  client_id: string;
+  session_id: string;
+  species_id: string;
+  count: number;
+  max_length_cm: number | null;
+  caught_at: string;
+}
+
+export interface PhotoRow {
+  id: string;
+  session_id: string;
+  catch_id: string | null;
+  storage_path: string;
+  taken_at: string;
+}
+
+export interface TripSummary extends Trip { catches: { species_id: string; count: number }[] }
+
+export interface SpotPhoto { id: string; url: string; taken_at: string; species_id: string | null; length: number | null }

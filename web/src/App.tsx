@@ -9,10 +9,13 @@ import { MapScreen } from "./screens/MapScreen";
 import { Places } from "./screens/Places";
 import { SpotSheet } from "./screens/SpotSheet";
 import { Suggest } from "./screens/Suggest";
-import { IconFish, IconMap, IconPin } from "./components/icons";
+import { IconFish, IconGear, IconTrips } from "./components/icons";
 import { getPosition } from "./lib/geo";
+import { flush, onPending, pendingCount } from "./lib/queue";
+import { loadActive, startTrip, type ActiveTrip } from "./lib/trips";
+import { Trips } from "./screens/Trips";
 
-type Tab = "suggest" | "map" | "places";
+type Tab = "suggest" | "trips" | "places";
 
 const ls = {
   get: <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -29,17 +32,26 @@ export default function App() {
   const [useGps, setUseGpsState] = useState<boolean>(ls.get("useGps", false));
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
-  const [windowId, setWindowId] = useState<WindowId>(ls.get("windowId", "today"));
+  const [windowId, setWindowId] = useState<WindowId>(ls.get("windowId3", "next3"));
   const [water, setWater] = useState<Water>(ls.get("water", "salt"));
   const [results, setResults] = useState<SpotWindow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
-  const [openSpot, setOpenSpot] = useState<string | null>(null);
+  const [openSpot, setOpenSpot] = useState<{ id: string; block?: string } | null>(null);
+  const [showMap, setShowMap] = useState(false);
+  const [active, setActive] = useState<ActiveTrip | null>(() => loadActive());
+  const [pending, setPending] = useState(0);
   const [adding, setAdding] = useState<{ lat: number; lon: number } | null>(null);
   const [now, setNow] = useState<Date>(() => api.now());
 
   useEffect(() => { api.session().then(setAuthed); }, []);
+  useEffect(() => {
+    pendingCount().then(setPending).catch(() => undefined);
+    const off = onPending(setPending);
+    void flush();
+    return () => { off(); };
+  }, []);
 
   const loadBase = useCallback(async () => {
     try {
@@ -81,7 +93,7 @@ export default function App() {
 
   useEffect(() => {
     if (!authed || !origin) return;
-    ls.set("windowId", windowId); ls.set("water", water);
+    ls.set("windowId3", windowId); ls.set("water", water);
     const ids = [...travel.keys()];
     const key = `res2|${windowId}|${water}|${ids.length}|${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
     if (!ids.length) { setResults([]); return; }
@@ -108,7 +120,13 @@ export default function App() {
   if (!authed) return <Login onDone={() => setAuthed(true)} />;
   if (!settings || !origin) return <div className="empty">{error ?? "Loading…"}</div>;
 
-  const sheetSpot = openSpot ? spotMap.get(openSpot) : undefined;
+  const sheetSpot = openSpot ? spotMap.get(openSpot.id) : undefined;
+
+  async function goFish(spot: Spot, scoreShown: number | null) {
+    if (active && active.trip.spot_id !== spot.id && !confirm(`You're already fishing at ${active.spot_name}. Start a new trip here instead? (The other one won't be saved.)`)) return;
+    setActive(await startTrip(spot, scoreShown));
+    setOpenSpot(null); setShowMap(false); setTab("trips");
+  }
 
   return (
     <div className="app">
@@ -118,11 +136,12 @@ export default function App() {
           <Suggest origin={origin} now={now} spots={spotMap} species={species} travel={travel}
             results={results} loading={loading} error={error} stale={stale}
             windowId={windowId} setWindowId={setWindowId} water={water} setWater={setWater}
-            openSpot={(id) => setOpenSpot(id)} openPlaces={() => setTab("places")} />
+            openSpot={(id, block) => setOpenSpot({ id, block })} openPlaces={() => setTab("places")}
+            openMap={() => setShowMap(true)} activeTripSpot={active?.trip.spot_id ?? null} />
         )}
-        {tab === "map" && (
-          <MapScreen origin={origin} spots={spots} travel={travel} results={results}
-            openSpot={(id) => setOpenSpot(id)} addSpotAt={(lat, lon) => setAdding({ lat, lon })} />
+        {tab === "trips" && (
+          <Trips active={active} setActive={setActive} spots={spotMap} species={species} pending={pending}
+            openSpot={(id) => setOpenSpot({ id })} />
         )}
         {tab === "places" && (
           <Places settings={settings} saveSettings={saveSettings} useGps={useGps} setUseGps={setUseGps}
@@ -133,14 +152,26 @@ export default function App() {
 
       <nav className="tabs">
         <button className={tab === "suggest" ? "on" : ""} onClick={() => setTab("suggest")}><IconFish />Fish</button>
-        <button className={tab === "map" ? "on" : ""} onClick={() => setTab("map")}><IconMap />Map</button>
-        <button className={tab === "places" ? "on" : ""} onClick={() => setTab("places")}><IconPin />Places</button>
+        <button className={tab === "trips" ? "on" : ""} onClick={() => setTab("trips")}>
+          <span className="tab-icon"><IconTrips />{active && <i className="tab-dot" />}</span>Trips
+        </button>
+        <button className={tab === "places" ? "on" : ""} onClick={() => setTab("places")}><IconGear />Settings</button>
       </nav>
 
+      {showMap && (
+        <div className="sheet sheet-map">
+          <div className="map-back"><button className="back" onClick={() => setShowMap(false)}><span>‹</span>Back</button></div>
+          <MapScreen origin={origin} spots={spots} travel={travel} results={results}
+            openSpot={(id) => setOpenSpot({ id })} addSpotAt={(lat, lon) => setAdding({ lat, lon })} />
+        </div>
+      )}
       {sheetSpot && (
-        <SpotSheet spot={sheetSpot} species={species}
+        <SpotSheet spot={sheetSpot} species={species} initialBlock={openSpot?.block}
           travelMin={travel.get(sheetSpot.id) ?? travelMin(origin.lat, origin.lon, sheetSpot)} now={now}
-          onClose={() => setOpenSpot(null)} onDeleted={() => { setOpenSpot(null); loadBase(); }} />
+          fishingHere={active?.trip.spot_id === sheetSpot.id}
+          onGoFish={(score) => goFish(sheetSpot, score)}
+          onClose={() => { if (active?.trip.spot_id === sheetSpot.id && tab !== "trips") setTab("trips"); setOpenSpot(null); }}
+          onDeleted={() => { setOpenSpot(null); loadBase(); }} />
       )}
       {adding && (
         <AddSpot lat={adding.lat} lon={adding.lon} species={species} onClose={() => setAdding(null)}

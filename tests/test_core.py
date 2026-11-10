@@ -182,3 +182,17 @@ def test_store_output_is_strict_json(cfg, payload, tmp_path, monkeypatch):
     rows = score_spot(cfg, spot, build_features(spot, payload["weather"][spot.id], None, now))
     json.loads(dumps(rows))  # raises on NaN
     assert dumps({"x": float("nan")}) == '{"x": null}'
+
+
+def test_tide_rows_and_backfill_summary(cfg, payload):
+    from condfishions.run import _tide_rows
+    from condfishions.observed import summarise
+    from condfishions.fetch import to_frame
+    now = pd.Timestamp("2026-07-08T04:00", tz=TZ)
+    spot = cfg.spot("shorncliffe_pier")
+    feats = build_features(spot, payload["weather"][spot.id], payload["marine"][spot.id], now)
+    rows = _tide_rows("r1", {spot.id: feats}, cfg.spots)
+    assert rows and len(rows[0]["series"]) > 100 and rows[0]["extremes"]
+    w = to_frame(payload["weather"][spot.id]); m = to_frame(payload["marine"][spot.id])
+    v = summarise(w, m, now, now + pd.Timedelta(hours=3))
+    assert {"wind_kmh", "wind_dir", "rain_mm", "wave_h", "sst"} <= set(v)
