@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 import type { Reg, Score } from "../lib/types";
 
 export function scoreClass(score: number): string {
-  // score is the catch rating (100 × chance of catching at least one)
+  // conditions rating: 50 = average conditions
   if (score >= 70) return "s-great";
-  if (score >= 50) return "s-good";
-  if (score >= 30) return "s-fair";
+  if (score >= 60) return "s-good";
+  if (score >= 50) return "s-fair";
   return "s-poor";
 }
 

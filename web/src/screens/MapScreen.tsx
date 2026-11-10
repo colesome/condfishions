@@ -15,8 +15,8 @@ interface Props {
 function colour(score: number | undefined): string {
   if (score === undefined) return "#aeaeb2";
   if (score >= 70) return "#34c759";
-  if (score >= 50) return "#8fcf4a";
-  if (score >= 30) return "#ff9f0a";
+  if (score >= 60) return "#8fcf4a";
+  if (score >= 50) return "#ff9f0a";
   return "#ff453a";
 }
 
@@ -65,9 +65,9 @@ export function MapScreen({ origin, spots, travel, results, openSpot, addSpotAt 
       </div>
       <div className="legend">
         <span><i style={{ background: "#34c759" }} />70+</span>
-        <span><i style={{ background: "#8fcf4a" }} />50</span>
-        <span><i style={{ background: "#ff9f0a" }} />30</span>
-        <span><i style={{ background: "#ff453a" }} />&lt;30</span>
+        <span><i style={{ background: "#8fcf4a" }} />60</span>
+        <span><i style={{ background: "#ff9f0a" }} />50</span>
+        <span><i style={{ background: "#ff453a" }} />&lt;50</span>
         <span><i style={{ background: "#c7c7cc" }} />not shown</span>
       </div>
     </div>

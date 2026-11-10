@@ -85,13 +85,16 @@ def test_wind_onshore_worse_than_offshore():
     assert f_wind(beach, 5, 90, 8) is None         # calm weather earns nothing
 
 
-def test_rating_is_catch_chance(cfg, payload):
+def test_rating_is_conditions_not_species_commonness(cfg, payload):
     now = pd.Timestamp("2026-07-08T04:00", tz=TZ)
     spot = cfg.spot("shorncliffe_pier")
     rows = score_spot(cfg, spot, build_features(spot, payload["weather"][spot.id], payload["marine"][spot.id], now))
     for r in rows:
-        assert abs(r["score"] - 100 * r["p_success"]) < 0.11
-        assert "cond_score" in r["conditions"]
+        if r["safety"] != "no_go" and not any(g["action"] == "closed" for g in r["regulations"]):
+            assert r["score"] == r["conditions"]["cond_score"]
+    # a rare species in the same conditions isn't rated lower just for being rare
+    by = {(r["species_id"], r["block_start"]): r for r in rows}
+    assert any(by[("jewfish", b)]["score"] > by[("bream", b)]["score"] for (s_, b) in by if s_ == "jewfish")
 
 
 def test_sst_trapezoid(cfg):

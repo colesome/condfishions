@@ -1,12 +1,11 @@
 """Transparent rules-based baseline scorer (model_version = baseline_v2).
 
-Two layers:
-  conditions score = 50 + sum(weight_i * factor_i), clipped 0..100 — how the conditions push
-                     fish behaviour, each factor in [-1, 1] (skipped when it doesn't apply).
-  catch rating     = 100 * P(catch >= 1), from the conditions score and the species' base rate.
-The catch rating is what the app shows and ranks by. Weather only counts when it changes how
-fish behave, or when it's rough enough to make fishing hard — pleasant, calm weather on its
-own earns nothing.
+score = conditions rating = 50 + sum(weight_i * factor_i), clipped 0..100. 50 = average
+conditions for that species, regardless of how common the species is. Each factor is in
+[-1, 1] (skipped when it doesn't apply). Weather only counts when it changes how fish behave
+or makes fishing hard — calm, pleasant weather on its own earns nothing.
+p_success (P(catch >= 1) from the rating and the species' base rate) is stored for the
+learning layer but not used for ranking.
 """
 from __future__ import annotations
 
@@ -275,8 +274,9 @@ def score_spot(cfg: Config, spot: Spot, feats: pd.DataFrame, block_h: int = 3,
             cond = round(sum(h.score for h in hrs) / len(hrs), 1)
             regs = regulation_flags(cfg, spot, sid, start.date())
             closed = any(r.action == "closed" for r in regs)
-            p = 0.0 if (closed or safety == "no_go") else p_success(cond, sp.base_rate)
-            score = round(100 * p, 1)  # catch rating: what the app shows and ranks by
+            blocked = closed or safety == "no_go"
+            p = 0.0 if blocked else p_success(cond, sp.base_rate)
+            score = 0.0 if blocked else cond  # conditions rating: what the app shows
             r_best = feats.loc[best.time]
             rows.append({
                 "spot_id": spot.id,

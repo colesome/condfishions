@@ -26,11 +26,12 @@ score with config/species.yaml        sessions, catches, photos  ──►  lear
 
 ## How a score works
 
-The app shows a **catch rating** = 100 × the chance of catching at least one fish of a species
-(the spot's rating is its best species). Underneath, a conditions score
-(`50 + Σ factor contributions`, 0–100) shifts each species' base catch rate up or down.
-Weather only counts when it changes fish behaviour (e.g. wash for tailor) or makes fishing hard
-(strong onshore wind, rough sea) — calm, pleasant weather on its own adds nothing.
+Each species gets a **conditions rating**: `50 + Σ factor contributions`, clipped 0–100, where 50
+means average conditions *for that species* — a rare fish isn't rated lower for being rare.
+A **spot's rating** is the average across the species found there, so spots are ranked on
+conditions, not on which fish they hold; tap a spot to see each species. Weather only counts when
+it changes fish behaviour (e.g. wash for tailor) or makes fishing hard (strong onshore wind,
+rough sea) — calm, pleasant weather on its own adds nothing.
 
 | Factor | Source | Example |
 |---|---|---|
@@ -49,15 +50,15 @@ Weather only counts when it changes fish behaviour (e.g. wash for tailor) or mak
 `swell_max` (lowered 20 % for long-period swell ≥12 s) or gusts reach 60 km/h on rocks.
 A no-go always scores 0, and no model may override it.
 
-A conditions score of 50 gives the species' `base_rate` (e.g. bream 60 %, jewfish 15 %). These are
-starting guesses; Phase 4 recalibrates them from your real sessions.
+`p_success` (chance of catching ≥1, from the rating and a starting-guess base rate per species) is
+stored for the learning layer but isn't shown or used for ranking.
 
 ## Phone app (`web/`)
 
 An installable web app (PWA) hosted free on GitHub Pages. You add it to your iPhone home
 screen and it opens full-screen like any other app. Only your login can see data.
 
-- **Fish:** spots ranked by catch rating at their best 3-hour window, with the date and time, how
+- **Fish:** spots ranked by conditions rating at their best 3-hour window, with the date and time, how
   far away, the species likely there and why. Saltwater by default, Freshwater toggle.
 - **Spot page:** a 7-day strip of 3-hour scores. Tap a block for each species' score, chance and
   reasons, plus wind, sea, tide, water temp and rain. Directions link.
@@ -73,7 +74,7 @@ screen and it opens full-screen like any other app. Only your login can see data
 ## Setup (one-off, about 20 minutes)
 
 1. **Supabase:** create a free project. In the SQL editor run
-   `0001_init.sql`, `0002_places_user_spots.sql` and `0003_spot_windows.sql` from `supabase/migrations/`, in that order.
+   the files in `supabase/migrations/` in number order (0004 is optional, see step 6).
    Create your user under *Authentication → Users*, then **turn off sign-ups**.
 2. **GitHub secrets** (*Settings → Secrets and variables → Actions*):
    - `SUPABASE_URL`
