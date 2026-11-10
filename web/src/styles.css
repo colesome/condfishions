@@ -244,7 +244,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .big-emoji { font-size: 44px; }
 .trip-fish { font-size: 22px; }
 .toast { position: fixed; left: 50%; bottom: calc(var(--tabs-h) + env(safe-area-inset-bottom) + 18px); transform: translateX(-50%);
-  background: rgba(28,28,30,.92); color: #fff; padding: 11px 18px; border-radius: 999px; font-weight: 600; z-index: 1300;
+  background: rgba(28,28,30,.92); color: #fff; padding: 11px 18px; border-radius: 999px; font-weight: 600; z-index: 1050;
   animation: pop .25s ease-out; }
 @keyframes pop { from { transform: translate(-50%, 10px) scale(.95); opacity: 0; } }
 
@@ -294,3 +294,8 @@ h1.brand span { background: linear-gradient(90deg, #007aff, #00b386); -webkit-ba
 h1.brand { font-size: 26px; }
 .title-actions .from { white-space: nowrap; font-size: 14px; }
 .title-actions { gap: 8px; }
+.row-pick { border: 0; background: none; padding: 0; text-align: left; font-size: 16px; }
+.row-pick small { display: block; color: var(--muted); font-size: 12px; }
+.photo-actions { display: flex; gap: 10px; margin-top: 10px; }
+.photo-btn { flex: 1; font-size: 15px; padding: 11px 10px; }
+.photo-btn-alt { background: var(--card); color: var(--accent); }

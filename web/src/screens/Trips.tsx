@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { bandFor } from "../lib/bands";
 import { getBlob } from "../lib/queue";
 import { hm } from "../lib/time";
+import { confirmRemoveSpecies } from "../lib/speciesActions";
 import { compressImage, finishTrip, logCatch, prefill, removeLastCatch, type ActiveTrip, type Review } from "../lib/trips";
 import type { Species, Spot, TripSummary } from "../lib/types";
 import { shortName } from "./Suggest";
@@ -17,9 +18,10 @@ interface TripsProps {
   pending: number;
   openSpot: (id: string) => void;
   onSpeciesAdded: (sp: Species) => void;
+  onSpeciesRemoved: (id: string) => void;
 }
 
-export function Trips({ active, setActive, spots, species, pending, openSpot, onSpeciesAdded }: TripsProps) {
+export function Trips({ active, setActive, spots, species, pending, openSpot, onSpeciesAdded, onSpeciesRemoved }: TripsProps) {
   const [history, setHistory] = useState<TripSummary[] | null>(null);
   const [catching, setCatching] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -115,7 +117,7 @@ export function Trips({ active, setActive, spots, species, pending, openSpot, on
       {catching && active && spot && (
         <CatchSheet spot={spot} species={species} onClose={() => setCatching(false)}
           caughtHere={[...new Set((history ?? []).filter((t) => t.spot_id === spot.id).flatMap((t) => t.catches.filter((c) => c.count > 0).map((c) => c.species_id)))]}
-          onSpeciesAdded={onSpeciesAdded}
+          onSpeciesAdded={onSpeciesAdded} onSpeciesRemoved={onSpeciesRemoved}
           onSave={async (c) => {
             setActive(await logCatch(active, c));
             setCatching(false);
@@ -153,11 +155,13 @@ function Thumb({ photoKey }: { photoKey: string | null }) {
 }
 
 // ── Log a catch ───────────────────────────────────────────────────────────────
-function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onClose, onSave }: {
-  spot: Spot; species: Species[]; caughtHere: string[]; onSpeciesAdded: (sp: Species) => void; onClose: () => void;
+function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onSpeciesRemoved, onClose, onSave }: {
+  spot: Spot; species: Species[]; caughtHere: string[]; onSpeciesAdded: (sp: Species) => void;
+  onSpeciesRemoved: (id: string) => void; onClose: () => void;
   onSave: (c: { species_id: string; length: number | null; released: boolean; photo: Blob | null }) => Promise<void>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const libRef = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [sp, setSp] = useState<string>(spot.species[0]);
@@ -168,7 +172,8 @@ function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onClose, onSave
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const spName = (id: string) => shortName(species.find((s) => s.id === id), id);
-  const choices = [...new Set([...spot.species, ...caughtHere, ...extra])];
+  const choices = [...new Set([...spot.species, ...caughtHere, ...extra])]
+    .filter((id) => !id.startsWith("user_") || species.some((s) => s.id === id));
   const nameOf = (id: string) => species.find((s) => s.id === id)?.name ?? spName(id);
 
   async function pick(f: File | undefined) {
@@ -192,10 +197,19 @@ function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onClose, onSave
       </div>
       <h1>Log a catch</h1>
 
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => pick(e.target.files?.[0])} />
-      <button className="photo-drop" onClick={() => fileRef.current?.click()}>
-        {preview ? <img src={preview} alt="" /> : <span>📸<br />Take a photo<small>optional</small></span>}
-      </button>
+      {/* camera: capture opens the camera directly; library: no capture → Photos picker */}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden
+        onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+      <input ref={libRef} type="file" accept="image/*" hidden
+        onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+      <div className="photo-drop">
+        {preview ? <img src={preview} alt="" /> : <span>📸<br />Add a photo<small>optional</small></span>}
+      </div>
+      <div className="photo-actions">
+        <button className="btn photo-btn" onClick={() => fileRef.current?.click()}>📷 Take photo</button>
+        <button className="btn photo-btn photo-btn-alt" onClick={() => libRef.current?.click()}>🖼️ From library</button>
+      </div>
+      {preview && <button className="link small-link" onClick={() => { setPhoto(null); if (preview) URL.revokeObjectURL(preview); setPreview(null); }}>Remove photo</button>}
 
       <div className="group-title">Species</div>
       <div className="pick-grid">
@@ -226,7 +240,13 @@ function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onClose, onSave
         Save catch
       </button>
       {asking && (
-        <SpeciesPrompt species={species} exclude={choices} onClose={() => setAsking(false)}
+        <SpeciesPrompt species={species} exclude={choices.filter((id) => !id.startsWith("user_"))} onClose={() => setAsking(false)}
+          onRemove={async (s) => {
+            if (!(await confirmRemoveSpecies(s))) return;
+            onSpeciesRemoved(s.id);
+            setExtra((x) => x.filter((i) => i !== s.id));
+            if (sp === s.id) setSp(spot.species[0]);
+          }}
           onPick={async (picked) => {
             setAsking(false);
             setErr(null);
@@ -245,8 +265,9 @@ function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onClose, onSave
 }
 
 /** "What did you catch?" pop-up: pick a known species or type a new one. */
-function SpeciesPrompt({ species, exclude, onPick, onClose }: {
-  species: Species[]; exclude: string[]; onPick: (s: Species | string) => void; onClose: () => void;
+function SpeciesPrompt({ species, exclude, onPick, onRemove, onClose }: {
+  species: Species[]; exclude: string[]; onPick: (s: Species | string) => void;
+  onRemove: (s: Species) => void; onClose: () => void;
 }) {
   const [q, setQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -265,7 +286,12 @@ function SpeciesPrompt({ species, exclude, onPick, onClose }: {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && term) onPick(matches[0] && !exact && matches.length === 1 ? matches[0] : (species.find((s) => s.name.toLowerCase() === term) ?? q)); }} />
         <div className="modal-list">
-          {matches.map((s) => <button key={s.id} className="row" onClick={() => onPick(s)}>{s.name}</button>)}
+          {matches.map((s) => (
+            <div key={s.id} className="row">
+              <button className="row-main row-pick" onClick={() => onPick(s)}>{s.name}{s.id.startsWith("user_") && <small>added by you</small>}</button>
+              {s.id.startsWith("user_") && <button className="x" onClick={() => onRemove(s)}>Remove</button>}
+            </div>
+          ))}
           {term && !exact && <button className="row accent" onClick={() => onPick(q)}>＋ Add “{q.trim()}”</button>}
         </div>
         <button className="link" onClick={onClose}>Cancel</button>

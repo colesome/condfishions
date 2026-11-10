@@ -142,12 +142,15 @@ export default function App() {
         {tab === "trips" && (
           <Trips active={active} setActive={setActive} spots={spotMap} species={species} pending={pending}
             openSpot={(id) => setOpenSpot({ id })}
-            onSpeciesAdded={(sp) => setSpecies((xs) => xs.some((x) => x.id === sp.id) ? xs : [...xs, sp])} />
+            onSpeciesAdded={(sp) => setSpecies((xs) => xs.some((x) => x.id === sp.id) ? xs : [...xs, sp])}
+            onSpeciesRemoved={(id) => setSpecies((xs) => xs.filter((x) => x.id !== id))} />
         )}
         {tab === "places" && (
           <Places settings={settings} saveSettings={saveSettings} useGps={useGps} setUseGps={setUseGps}
             gpsError={gpsError} lastRun={lastRun} now={now} inRangeCount={travel.size}
-            onSignOut={async () => { await api.signOut(); setAuthed(false); }} />
+            onSignOut={async () => { await api.signOut(); setAuthed(false); }}
+            userSpecies={species.filter((x) => x.id.startsWith("user_"))}
+            onSpeciesRemoved={(id) => setSpecies((xs) => xs.filter((x) => x.id !== id))} />
         )}
       </main>
 
