@@ -28,6 +28,9 @@ export interface Api {
   update(table: string, id: string, patch: Record<string, unknown>): Promise<void>;
   uploadPhoto(path: string, blob: Blob): Promise<void>;
   addSpecies(name: string): Promise<Species>;
+  userSpecies(): Promise<Species[]>;
+  speciesUsage(id: string): Promise<{ photos: number; catches: number }>;
+  removeSpecies(id: string): Promise<void>;
   deleteTrip(id: string): Promise<void>;
 }
 
@@ -129,6 +132,23 @@ class SupabaseApi implements Api {
     await this.q(this.sb.from("species").upsert({ ...sp, rules: {}, source: "user" }, { onConflict: "id", ignoreDuplicates: true }));
     return sp;
   }
+  async userSpecies() {
+    return this.q<Species[]>(this.sb.from("species").select("id,name,base_rate,notes").eq("source", "user").order("name"));
+  }
+  async speciesUsage(id: string) {
+    const c = await this.sb.from("catches").select("id", { count: "exact", head: true }).eq("species_id", id).gt("count", 0);
+    const ph = await this.sb.from("photos").select("id, catches!inner(species_id)", { count: "exact", head: true })
+      .eq("catches.species_id", id);
+    if (c.error || ph.error) throw new Error((c.error ?? ph.error)!.message);
+    return { photos: ph.count ?? 0, catches: c.count ?? 0 };
+  }
+  async removeSpecies(id: string) {
+    if (!id.startsWith("user_")) throw new Error("Only species you added can be removed.");
+    const u = await this.speciesUsage(id);
+    if (u.photos > 0) throw new Error("This species has photos — delete those trips first.");
+    await this.q(this.sb.from("catches").delete().eq("species_id", id));
+    await this.q(this.sb.from("species").delete().eq("id", id).eq("source", "user"));
+  }
   async deleteTrip(id: string) {
     const photos = await this.q<{ storage_path: string }[]>(this.sb.from("photos").select("storage_path").eq("session_id", id));
     if (photos.length) {
@@ -224,6 +244,18 @@ class DemoApi implements Api {
     const sp = speciesFromName(name);
     if (!this.table<Species>("species").some((s) => s.id === sp.id)) await this.upsert("species", { ...sp });
     return sp;
+  }
+  async userSpecies() { return this.table<Species>("species"); }
+  async speciesUsage(id: string) {
+    const catches = this.table<{ id: string; species_id: string; count: number }>("catches").filter((c) => c.species_id === id && c.count > 0);
+    const ids = new Set(catches.map((c) => c.id));
+    const photos = this.table<{ catch_id: string | null }>("photos").filter((p) => p.catch_id && ids.has(p.catch_id));
+    return { photos: photos.length, catches: catches.length };
+  }
+  async removeSpecies(id: string) {
+    if ((await this.speciesUsage(id)).photos > 0) throw new Error("This species has photos — delete those trips first.");
+    localStorage.setItem("demo_db_catches", JSON.stringify(this.table<{ species_id: string }>("catches").filter((c) => c.species_id !== id)));
+    localStorage.setItem("demo_db_species", JSON.stringify(this.table<Species>("species").filter((s) => s.id !== id)));
   }
   async deleteTrip(id: string) {
     for (const t of ["sessions", "catches", "photos", "observed_conditions"]) {

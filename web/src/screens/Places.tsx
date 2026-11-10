@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { api } from "../lib/api";
+import { confirmRemoveSpecies } from "../lib/speciesActions";
 import { getPosition } from "../lib/geo";
 import { ago } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
-import type { Place, Run, Settings } from "../lib/types";
+import type { Place, Run, Settings, Species } from "../lib/types";
 
 interface Props {
   settings: Settings;
@@ -15,6 +16,8 @@ interface Props {
   now: Date;
   inRangeCount: number;
   onSignOut: () => void;
+  userSpecies: Species[];
+  onSpeciesRemoved: (id: string) => void;
 }
 
 interface Hit { display_name: string; lat: string; lon: string }
@@ -136,6 +139,21 @@ export function Places(p: Props) {
       </div>
       {msg && <p className="hint">{msg}</p>}
       <p className="hint">Tap a place to fish from there. Somewhere new? Add your own spots from the Map tab.</p>
+
+      {p.userSpecies.length > 0 && (
+        <>
+          <div className="group-title">Your species</div>
+          <div className="group">
+            {p.userSpecies.map((sp) => (
+              <div key={sp.id} className="row">
+                <span className="row-main">{sp.name}</span>
+                <button className="x" onClick={async () => { if (await confirmRemoveSpecies(sp)) p.onSpeciesRemoved(sp.id); }}>Remove</button>
+              </div>
+            ))}
+          </div>
+          <p className="hint">Species you added with “Other…”. Ones with photos can't be removed.</p>
+        </>
+      )}
 
       <div className="group-title">Scores</div>
       <div className="group">
