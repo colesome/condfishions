@@ -80,8 +80,18 @@ def test_wind_onshore_worse_than_offshore():
     beach = Spot(id="b", name="b", region="", state="QLD", lat=-28, lon=153.5, type="beach", tidal=True,
                  facing=90, shelter=0, species=["tailor"], swell_max=2.5)
     onshore = f_wind(beach, 20, 90, 25)[0]
-    offshore = f_wind(beach, 20, 270, 25)[0]
-    assert offshore > onshore
+    assert onshore < 0
+    assert f_wind(beach, 20, 270, 25) is None      # offshore breeze: no effect
+    assert f_wind(beach, 5, 90, 8) is None         # calm weather earns nothing
+
+
+def test_rating_is_catch_chance(cfg, payload):
+    now = pd.Timestamp("2026-07-08T04:00", tz=TZ)
+    spot = cfg.spot("shorncliffe_pier")
+    rows = score_spot(cfg, spot, build_features(spot, payload["weather"][spot.id], payload["marine"][spot.id], now))
+    for r in rows:
+        assert abs(r["score"] - 100 * r["p_success"]) < 0.11
+        assert "cond_score" in r["conditions"]
 
 
 def test_sst_trapezoid(cfg):

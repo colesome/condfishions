@@ -1,5 +1,4 @@
 import { Chip, ScoreBadge } from "../components/ui";
-import { rankValue } from "../lib/rank";
 import { WINDOWS, fmtWhen, type WindowId } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
 import type { Origin, Species, Spot, SpotWindow, Water } from "../lib/types";
@@ -29,10 +28,9 @@ export function shortName(sp: Species | undefined, id: string): string {
 
 export function Suggest(p: Props) {
   const ranked = (p.results ?? [])
-    .map((r) => ({ r, rank: rankValue(r.top_score, p.travel.get(r.spot_id) ?? 999) }))
-    .sort((a, b) => b.rank - a.rank)
-    .slice(0, 25)
-    .map((x) => x.r);
+    .slice()
+    .sort((a, b) => b.top_score - a.top_score)
+    .slice(0, 25);
   const spName = (id: string) => shortName(p.species.find((s) => s.id === id), id);
 
   return (
@@ -56,7 +54,7 @@ export function Suggest(p: Props) {
         ))}
       </div>
 
-      <p className="caption">Best time at each spot, ranked by conditions — closer spots win a close call.</p>
+      <p className="caption">Best time at each spot. Rating = how likely you are to catch a fish (0–100).</p>
 
       {p.stale && <div className="banner">Offline — showing your last update.</div>}
       {p.error && !p.stale && <div className="banner banner-err">{p.error}</div>}

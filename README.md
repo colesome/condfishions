@@ -26,7 +26,11 @@ score with config/species.yaml        sessions, catches, photos  ──►  lear
 
 ## How a score works
 
-`score = 50 + Σ factor contributions`, clipped 0–100, normalised by the factors that apply.
+The app shows a **catch rating** = 100 × the chance of catching at least one fish of a species
+(the spot's rating is its best species). Underneath, a conditions score
+(`50 + Σ factor contributions`, 0–100) shifts each species' base catch rate up or down.
+Weather only counts when it changes fish behaviour (e.g. wash for tailor) or makes fishing hard
+(strong onshore wind, rough sea) — calm, pleasant weather on its own adds nothing.
 
 | Factor | Source | Example |
 |---|---|---|
@@ -35,8 +39,8 @@ score with config/species.yaml        sessions, catches, photos  ──►  lear
 | Tide phase | Open-Meteo sea level → extremes | flathead: last of the run-out |
 | Spring/neap | moon age | bigger tides help jewfish |
 | Water temp | Open-Meteo marine SST | Spanish mackerel >23 °C |
-| Wind | speed × onshore component × spot shelter | 25 km/h onshore at a beach = bad |
-| Swell | wave height vs spot limit | tailor like some wash |
+| Wind | speed × onshore component × spot shelter (penalty only) | 25 km/h onshore at a beach = harder |
+| Swell | wave height vs spot limit | tailor like some wash; too rough = harder |
 | Rain (72 h) | Open-Meteo | jewfish/bass/sharks like a fresh |
 | Pressure trend | Open-Meteo | slow fall = slight plus |
 | Solunar | moon transit/rise/set | small weight, kept testable |
@@ -45,17 +49,16 @@ score with config/species.yaml        sessions, catches, photos  ──►  lear
 `swell_max` (lowered 20 % for long-period swell ≥12 s) or gusts reach 60 km/h on rocks.
 A no-go always scores 0, and no model may override it.
 
-`p_success` maps the score to a chance of catching ≥1 of that species. A score of 50 equals
-the species' `base_rate`. Phase 4 recalibrates this from your real sessions.
+A conditions score of 50 gives the species' `base_rate` (e.g. bream 60 %, jewfish 15 %). These are
+starting guesses; Phase 4 recalibrates them from your real sessions.
 
 ## Phone app (`web/`)
 
 An installable web app (PWA) hosted free on GitHub Pages. You add it to your iPhone home
 screen and it opens full-screen like any other app. Only your login can see data.
 
-- **Fish:** spots ranked by their best 3-hour window, with the date and time, how far away, the
-  species likely there and why. One ranking: conditions first, with closer spots winning a close
-  call. Saltwater by default, Freshwater toggle.
+- **Fish:** spots ranked by catch rating at their best 3-hour window, with the date and time, how
+  far away, the species likely there and why. Saltwater by default, Freshwater toggle.
 - **Spot page:** a 7-day strip of 3-hour scores. Tap a block for each species' score, chance and
   reasons, plus wind, sea, tide, water temp and rain. Directions link.
 - **Location:** if "Use my current location" fails on iPhone, allow it under Settings → Privacy &
