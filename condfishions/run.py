@@ -138,11 +138,13 @@ def main(argv: list[str] | None = None) -> int:
 
     store.upsert("spots", _spot_rows(cfg), on_conflict="id")
     store.upsert("species", _species_rows(cfg), on_conflict="id")
+    # The run row must exist before scores/archive rows reference it (foreign key).
+    store.upsert("runs", [{"run_id": run_id, "created_at": now.isoformat(), "model_version": MODEL_VERSION,
+                           "feature_version": FEATURE_VERSION, "git_sha": _git_sha(),
+                           "n_scores": len(rows), "problems": problems, "archived": args.archive}],
+                 on_conflict="run_id")
     store.upsert("forecast_scores", rows, on_conflict="spot_id,species_id,block_start")
     store.delete_before("forecast_scores", "block_start", (now - pd.Timedelta(hours=6)).isoformat())
-    store.insert("runs", [{"run_id": run_id, "created_at": now.isoformat(), "model_version": MODEL_VERSION,
-                           "feature_version": FEATURE_VERSION, "git_sha": _git_sha(),
-                           "n_scores": len(rows), "problems": problems, "archived": args.archive}])
     if args.archive:
         store.upsert("forecast_archive", _archive_rows(run_id, now.date(), feats_by_spot),
                      on_conflict="run_date,spot_id")
