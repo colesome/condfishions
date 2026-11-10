@@ -16,7 +16,7 @@ import sys
 import pandas as pd
 
 from .astro import TZ
-from .config import load_config, spots_in_range
+from .config import Home, Spot, load_config, spots_in_range
 from .features import FEATURE_VERSION, build_features
 from .fetch import fetch_all
 from .scoring import MODEL_VERSION, score_spot
@@ -38,8 +38,35 @@ def _spot_rows(cfg) -> list[dict]:
         "id": s.id, "name": s.name, "region": s.region, "state": s.state, "lat": s.lat, "lon": s.lon,
         "type": s.type, "tidal": s.tidal, "facing": s.facing, "shelter": s.shelter,
         "swell_max": s.swell_max, "extra_min": s.extra_min, "access": s.access, "permit": s.permit,
-        "species": s.species, "verified": s.verified,
-    } for s in cfg.spots]
+        "species": s.species, "verified": s.verified, "source": "config",
+    } for s in cfg.spots if s.id not in _USER_SPOT_IDS]
+
+
+_USER_SPOT_IDS: set[str] = set()
+
+_SPOT_FIELDS = {"id", "name", "region", "state", "lat", "lon", "type", "tidal", "facing", "shelter",
+                "species", "swell_max", "extra_min", "access", "permit", "verified"}
+
+
+def merge_user_spots(cfg, rows: list[dict]) -> list[str]:
+    """Add app-created spots to the config. Returns warnings."""
+    warns, known = [], {s.id for s in cfg.spots}
+    for r in rows:
+        if r["id"] in known:
+            continue
+        kw = {k: r.get(k) for k in _SPOT_FIELDS if r.get(k) is not None}
+        kw.setdefault("region", "My spots")
+        kw.setdefault("state", "")
+        kw["species"] = [x for x in (r.get("species") or []) if x in cfg.species]
+        if not kw["species"]:
+            warns.append(f"user spot {r['id']}: no known species")
+            continue
+        try:
+            cfg.spots.append(Spot(**kw))
+            _USER_SPOT_IDS.add(r["id"])
+        except TypeError as e:
+            warns.append(f"user spot {r['id']}: {e}")
+    return warns
 
 
 def _species_rows(cfg) -> list[dict]:
@@ -77,6 +104,11 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = load_config()
     store = Store()
+    settings = store.get_settings()
+    if settings:  # home/range set from the app wins over home.yaml
+        cfg.home = Home(name=settings["home_name"], lat=settings["home_lat"], lon=settings["home_lon"],
+                        max_travel_min=settings["max_travel_min"])
+    user_warns = merge_user_spots(cfg, store.get_user_spots())
     now = pd.Timestamp(args.now).tz_localize(TZ) if args.now else pd.Timestamp.now(tz=TZ)
     run_id = now.strftime("%Y%m%dT%H%M")
 
@@ -86,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         raw = fetch_all(cfg.spots, forecast_days=args.days)
 
-    feats_by_spot, rows, problems = {}, [], []
+    feats_by_spot, rows, problems = {}, [], list(user_warns)
     for spot in cfg.spots:
         w = raw["weather"].get(spot.id)
         if w is None:

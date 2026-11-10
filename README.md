@@ -13,7 +13,7 @@ compute tide / sun / moon locally     forecast_archive (daily)        catches, p
 score with config/species.yaml        sessions, catches, photos  ──►  learning layer (Phase 4)
 ```
 
-## Status — Phase 0 (scoring engine)
+## What's here
 
 - `config/spots.yaml` — 52 land-based spots (Noosa → Brunswick Heads, Moreton/Straddie, bass dams).
   Coordinates are approximate (`verified: false`); fix as you visit them.
@@ -48,15 +48,43 @@ A no-go always scores 0, and no model may override it.
 `p_success` maps the score to a chance of catching ≥1 of that species. A score of 50 equals
 the species' `base_rate`. Phase 4 recalibrates this from your real sessions.
 
-## Setup (one-off, about 15 minutes)
+## Phone app (`web/`)
 
-1. **Supabase:** create a free project, open the SQL editor and run
-   `supabase/migrations/0001_init.sql`. Create your user under *Authentication → Users*,
-   then **turn off sign-ups**.
-2. **GitHub secrets** (*Settings → Secrets → Actions*): `SUPABASE_URL` and
-   `SUPABASE_SERVICE_KEY` (service-role key — never put it in the phone app).
-3. **Actions:** run *Score fishing conditions* manually once (tick *archive*). After that it
-   runs four times a day, which also keeps the free Supabase project from pausing.
+An installable web app (PWA) hosted free on GitHub Pages. You add it to your iPhone home
+screen and it opens full-screen like any other app. Only your login can see data.
+
+- **Fish:** best windows within range for a time window (next 6 h, today, tonight, tomorrow,
+  weekend, 3 days) and species, sorted by conditions or catch chance, with the reasons.
+- **Spot page:** a 7-day strip of 3-hour scores per species. Tap a block for its reasons,
+  wind, sea, tide, water temp and rain, plus a directions link.
+- **Map:** spots coloured by score; out-of-range spots greyed. **＋ Add a spot** lets you tap a
+  location and describe it (type, which way you cast, exposure, species). Scored from the next run.
+- **Places:** change home and travel range (30 min – 7 h), save places (Home, Holiday…),
+  search a town, save where you are, or **Use my current location** while travelling.
+  **Refresh now** triggers a scoring run straight away.
+- Works offline with your last results (handy on Moreton or Straddie).
+
+## Setup (one-off, about 20 minutes)
+
+1. **Supabase:** create a free project. In the SQL editor run
+   `supabase/migrations/0001_init.sql`, then `0002_places_user_spots.sql`.
+   Create your user under *Authentication → Users*, then **turn off sign-ups**.
+2. **GitHub secrets** (*Settings → Secrets and variables → Actions*):
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_KEY` — service-role key, scoring job only. Never put it in the app.
+   - `SUPABASE_ANON_KEY` — public anon key for the app (safe with row-level security).
+3. **GitHub Pages:** *Settings → Pages → Source: GitHub Actions*.
+4. Merge to `main`. *Deploy phone app* publishes to `https://<you>.github.io/condfishions/`.
+   Run *Score fishing conditions* once by hand (tick *archive*).
+5. **iPhone:** open the URL in Safari → Share → **Add to Home Screen** → open it from the
+   icon and sign in.
+6. *(Optional, for "Refresh now")* create a fine-grained GitHub token for this repo only with
+   *Actions: read and write*. Then run
+   `npx supabase functions deploy rescore --project-ref <ref>` and set the function secrets
+   `GH_TOKEN` and `GH_REPO=colesome/condfishions`.
+
+The scheduled scoring runs four times a day, which also keeps the free Supabase project from
+pausing.
 
 ## Local use
 
@@ -68,6 +96,10 @@ python -m condfishions.run --print                   # live (needs internet); wr
 python tests/make_fixture.py && python -m condfishions.run \
     --fixture tests/fixtures/sample_payload.json --now 2026-07-08T04:00 --print   # offline
 python -m pytest -q
+
+# app with demo data (no Supabase needed)
+python web/scripts/make_demo.py      # after the offline run above
+cd web && npm install && npm run dev
 ```
 
 ## Roadmap
@@ -75,7 +107,7 @@ python -m pytest -q
 | Phase | Delivers |
 |---|---|
 | 0 ✅ | Scoring engine, spot catalogue, schema, scheduled job |
-| 1 | Phone app (installable PWA): suggestions, reasons, safety, map, range setting |
+| 1 ✅ | Phone app: suggestions, spot pages, map, editable home/range/places, add-your-own spots |
 | 2 | Check-in, catch + skunk logging, photos, offline sync, observed-conditions backfill (MSQ gauges) |
 | 3 | Push alerts, forecast-vs-actual and baseline-calibration pages |
 | 4 | Learning layer (hierarchical recalibration of the baseline), champion/challenger, wildcard picks |

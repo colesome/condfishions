@@ -1,0 +1,130 @@
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Run, Score, Settings, Species, Spot } from "./types";
+
+const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+export interface Api {
+  demo: boolean;
+  now(): Date;
+  session(): Promise<boolean>;
+  signIn(email: string, password: string): Promise<string | null>;
+  signOut(): Promise<void>;
+  spots(): Promise<Spot[]>;
+  species(): Promise<Species[]>;
+  settings(): Promise<Settings>;
+  saveSettings(s: Settings): Promise<void>;
+  bestBlocks(spotIds: string[], species: string[] | null, from: Date, to: Date): Promise<Score[]>;
+  spotScores(spotId: string, from: Date): Promise<Score[]>;
+  addSpot(s: Spot): Promise<void>;
+  deleteSpot(id: string): Promise<void>;
+  lastRun(): Promise<Run | null>;
+  rescore(): Promise<boolean>;
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  home_name: "Brisbane CBD", home_lat: -27.4698, home_lon: 153.0251, max_travel_min: 120,
+  saved_places: [{ name: "Brisbane CBD", lat: -27.4698, lon: 153.0251, max_travel_min: 120 }],
+};
+
+// ── Supabase ─────────────────────────────────────────────────────────────────
+class SupabaseApi implements Api {
+  demo = false;
+  private sb: SupabaseClient;
+  constructor(url: string, key: string) {
+    this.sb = createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } });
+  }
+  now() { return new Date(); }
+  async session() { return !!(await this.sb.auth.getSession()).data.session; }
+  async signIn(email: string, password: string) {
+    const { error } = await this.sb.auth.signInWithPassword({ email, password });
+    return error ? error.message : null;
+  }
+  async signOut() { await this.sb.auth.signOut(); }
+  private async q<T>(p: PromiseLike<{ data: T | null; error: { message: string } | null }>): Promise<T> {
+    const { data, error } = await p;
+    if (error) throw new Error(error.message);
+    return data as T;
+  }
+  spots() { return this.q<Spot[]>(this.sb.from("spots").select("*").order("name")); }
+  species() { return this.q<Species[]>(this.sb.from("species").select("id,name,base_rate,notes")); }
+  async settings() {
+    const rows = await this.q<Settings[]>(this.sb.from("settings").select("*").eq("id", 1));
+    return rows[0] ?? DEFAULT_SETTINGS;
+  }
+  async saveSettings(s: Settings) {
+    await this.q(this.sb.from("settings").upsert({ id: 1, ...s, updated_at: new Date().toISOString() }));
+  }
+  bestBlocks(spotIds: string[], species: string[] | null, from: Date, to: Date) {
+    return this.q<Score[]>(this.sb.rpc("best_blocks", {
+      p_spots: spotIds, p_species: species, p_from: from.toISOString(), p_to: to.toISOString(),
+    }));
+  }
+  spotScores(spotId: string, from: Date) {
+    return this.q<Score[]>(this.sb.from("forecast_scores").select("*").eq("spot_id", spotId)
+      .gte("block_start", from.toISOString()).order("block_start"));
+  }
+  async addSpot(s: Spot) { await this.q(this.sb.from("spots").insert({ ...s, source: "user" })); }
+  async deleteSpot(id: string) { await this.q(this.sb.from("spots").delete().eq("id", id).eq("source", "user")); }
+  async lastRun() {
+    const rows = await this.q<Run[]>(this.sb.from("runs").select("run_id,created_at,n_scores,problems")
+      .order("created_at", { ascending: false }).limit(1));
+    return rows[0] ?? null;
+  }
+  async rescore() {
+    const { error } = await this.sb.functions.invoke("rescore", { body: {} });
+    return !error;
+  }
+}
+
+// ── Demo (no Supabase configured): reads ./demo/*.json made from a fixture run ──
+class DemoApi implements Api {
+  demo = true;
+  private cache: Record<string, unknown> = {};
+  private nowTs = new Date("2026-07-08T04:30:00+10:00");
+  now() { return this.nowTs; }
+  async session() { return true; }
+  async signIn() { return null; }
+  async signOut() {}
+  private async load<T>(name: string): Promise<T> {
+    if (!this.cache[name]) {
+      const r = await fetch(`${import.meta.env.BASE_URL}demo/${name}.json`);
+      if (!r.ok) throw new Error(`demo data missing: ${name}.json (run web/scripts/make_demo.py)`);
+      this.cache[name] = await r.json();
+    }
+    return this.cache[name] as T;
+  }
+  private userSpots(): Spot[] { return JSON.parse(localStorage.getItem("demo_spots") ?? "[]"); }
+  async spots() { return [...(await this.load<Spot[]>("spots")), ...this.userSpots()]; }
+  async species() { return this.load<Species[]>("species"); }
+  async settings() {
+    const s = localStorage.getItem("demo_settings");
+    return s ? (JSON.parse(s) as Settings) : DEFAULT_SETTINGS;
+  }
+  async saveSettings(s: Settings) { localStorage.setItem("demo_settings", JSON.stringify(s)); }
+  async bestBlocks(spotIds: string[], species: string[] | null, from: Date, to: Date) {
+    const all = await this.load<Score[]>("forecast_scores");
+    const ids = new Set(spotIds);
+    const best = new Map<string, Score>();
+    for (const r of all) {
+      const t = new Date(r.block_start);
+      if (!ids.has(r.spot_id) || (species && !species.includes(r.species_id)) || r.safety === "no_go"
+        || t < from || t >= to) continue;
+      const k = `${r.spot_id}|${r.species_id}`;
+      const b = best.get(k);
+      if (!b || r.score > b.score) best.set(k, r);
+    }
+    return [...best.values()];
+  }
+  async spotScores(spotId: string, from: Date) {
+    const all = await this.load<Score[]>("forecast_scores");
+    return all.filter((r) => r.spot_id === spotId && new Date(r.block_start) >= from)
+      .sort((a, b) => a.block_start.localeCompare(b.block_start));
+  }
+  async addSpot(s: Spot) { localStorage.setItem("demo_spots", JSON.stringify([...this.userSpots(), { ...s, source: "user" }])); }
+  async deleteSpot(id: string) { localStorage.setItem("demo_spots", JSON.stringify(this.userSpots().filter((s) => s.id !== id))); }
+  async lastRun() { return { run_id: "demo", created_at: this.nowTs.toISOString(), n_scores: 0, problems: [] }; }
+  async rescore() { return false; }
+}
+
+export const api: Api = URL && KEY ? new SupabaseApi(URL, KEY) : new DemoApi();

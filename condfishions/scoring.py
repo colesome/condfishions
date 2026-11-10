@@ -298,6 +298,8 @@ def _conditions(r: pd.Series) -> dict:
         "wind_kmh": g("wind_kmh", 0), "wind_dir": compass(r.get("wind_dir")), "gust_kmh": g("gust_kmh", 0),
         "wave_h": g("wave_h"), "swell_h": g("swell_h"), "swell_period": g("swell_period", 0),
         "sst": g("sst"), "air_temp": g("air_temp", 0), "rain_72h": g("rain_72h", 0),
-        "pressure": g("pressure", 0), "tide_phase": r.get("tide_phase"), "light": r.get("light"),
+        "pressure": g("pressure", 0),
+        "tide_phase": r.get("tide_phase") if isinstance(r.get("tide_phase"), str) else None,
+        "light": r.get("light") if isinstance(r.get("light"), str) else None,
         "moon_age": g("moon_age"),
     }
