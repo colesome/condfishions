@@ -28,13 +28,21 @@ export function toBlocks(rows: Score[]): (SpotWindow & { no_go: boolean })[] {
   }).sort((a, b) => a.block_start.localeCompare(b.block_start));
 }
 
-/** Best block per spot. */
+/** Best block per spot, plus the best block on each other day (same as SQL best_spot_windows). */
 export function bestPerSpot(rows: Score[]): SpotWindow[] {
-  const best = new Map<string, SpotWindow>();
+  const bySpot = new Map<string, SpotWindow[]>();
   for (const b of toBlocks(rows)) {
     if (b.no_go) continue;
-    const cur = best.get(b.spot_id);
-    if (!cur || b.top_score > cur.top_score) best.set(b.spot_id, b);
+    (bySpot.get(b.spot_id) ?? bySpot.set(b.spot_id, []).get(b.spot_id)!).push(b);
   }
-  return [...best.values()];
+  const dayKey = (iso: string) => new Date(iso).toDateString();
+  return [...bySpot.values()].map((blocks) => {
+    const sorted = [...blocks].sort((a, b) => b.top_score - a.top_score);
+    const best = sorted[0];
+    const perDay = new Map<string, SpotWindow>();
+    for (const b of sorted) if (!perDay.has(dayKey(b.block_start))) perDay.set(dayKey(b.block_start), b);
+    const alt = [...perDay.values()].filter((b) => dayKey(b.block_start) !== dayKey(best.block_start)).slice(0, 3)
+      .map((b) => ({ block_start: b.block_start, block_hours: b.block_hours, score: b.top_score }));
+    return { ...best, alt_blocks: alt };
+  });
 }

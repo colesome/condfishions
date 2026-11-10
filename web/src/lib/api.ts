@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { bestPerSpot } from "./aggregate";
-import type { Run, Score, Settings, Species, Spot, SpotWindow } from "./types";
+import type { Run, Score, Settings, Species, Spot, SpotPhoto, SpotWindow, Tide, TripSummary } from "./types";
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -21,6 +21,12 @@ export interface Api {
   deleteSpot(id: string): Promise<void>;
   lastRun(): Promise<Run | null>;
   rescore(): Promise<"requested" | "not_configured" | "error">;
+  tide(spotId: string): Promise<Tide | null>;
+  trips(spotId?: string): Promise<TripSummary[]>;
+  spotPhotos(spotId: string): Promise<SpotPhoto[]>;
+  upsert(table: string, row: Record<string, unknown>): Promise<void>;
+  update(table: string, id: string, patch: Record<string, unknown>): Promise<void>;
+  uploadPhoto(path: string, blob: Blob): Promise<void>;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -78,6 +84,43 @@ class SupabaseApi implements Api {
     if (error) return error.message.includes("request_rescore") ? "not_configured" as const : "error" as const;
     return data === "requested" ? "requested" as const : "not_configured" as const;
   }
+  async tide(spotId: string) {
+    const rows = await this.q<Tide[]>(this.sb.from("tides").select("series,extremes").eq("spot_id", spotId));
+    return rows[0] ?? null;
+  }
+  async trips(spotId?: string) {
+    let q = this.sb.from("sessions").select("*, catches(species_id,count)").order("start_ts", { ascending: false }).limit(60);
+    if (spotId) q = q.eq("spot_id", spotId);
+    return this.q<TripSummary[]>(q);
+  }
+  async spotPhotos(spotId: string) {
+    type C = { species_id: string; max_length_cm: number | null };
+    type Row = { id: string; storage_path: string; taken_at: string; catches: C | C[] | null };
+    const { data: raw, error } = await this.sb.from("photos")
+      .select("id,storage_path,taken_at,catches(species_id,max_length_cm),sessions!inner(spot_id)")
+      .eq("sessions.spot_id", spotId).order("taken_at", { ascending: false }).limit(30);
+    if (error) throw new Error(error.message);
+    const rows = ((raw ?? []) as unknown as Row[]).map((r) => ({
+      ...r, catches: Array.isArray(r.catches) ? r.catches[0] ?? null : r.catches,
+    }));
+    if (!rows.length) return [];
+    const { data } = await this.sb.storage.from("photos").createSignedUrls(rows.map((r) => r.storage_path), 3600);
+    const urls = new Map((data ?? []).map((d) => [d.path, d.signedUrl]));
+    return rows.filter((r) => urls.get(r.storage_path)).map((r) => ({
+      id: r.id, url: urls.get(r.storage_path)!, taken_at: r.taken_at,
+      species_id: r.catches?.species_id ?? null, length: r.catches?.max_length_cm ?? null,
+    }));
+  }
+  async upsert(table: string, row: Record<string, unknown>) {
+    await this.q(this.sb.from(table).upsert(row, { onConflict: "id" }));
+  }
+  async update(table: string, id: string, patch: Record<string, unknown>) {
+    await this.q(this.sb.from(table).update(patch).eq("id", id));
+  }
+  async uploadPhoto(path: string, blob: Blob) {
+    const { error } = await this.sb.storage.from("photos").upload(path, blob, { upsert: true, contentType: "image/jpeg" });
+    if (error) throw new Error(error.message);
+  }
 }
 
 // ── Demo (no Supabase configured): reads ./demo/*.json made from a fixture run ──
@@ -122,7 +165,44 @@ class DemoApi implements Api {
   async deleteSpot(id: string) { localStorage.setItem("demo_spots", JSON.stringify(this.userSpots().filter((s) => s.id !== id))); }
   async lastRun() { return { run_id: "demo", created_at: this.nowTs.toISOString(), n_scores: 0, problems: [] }; }
   async rescore() { return "not_configured" as const; }
+  async tide(spotId: string) {
+    const all = await this.load<Record<string, Tide>>("tides").catch(() => ({} as Record<string, Tide>));
+    return all[spotId] ?? null;
+  }
+  private table<T>(name: string): T[] { return JSON.parse(localStorage.getItem(`demo_db_${name}`) ?? "[]"); }
+  async trips(spotId?: string) {
+    const catches = this.table<{ session_id: string; species_id: string; count: number }>("catches");
+    return this.table<TripSummary>("sessions")
+      .filter((t) => !spotId || t.spot_id === spotId)
+      .map((t) => ({ ...t, catches: catches.filter((c) => c.session_id === t.id) }))
+      .sort((a, b) => b.start_ts.localeCompare(a.start_ts));
+  }
+  async spotPhotos(spotId: string) {
+    const { getBlob } = await import("./queue");
+    const sessions = new Set(this.table<{ id: string; spot_id: string }>("sessions").filter((s) => s.spot_id === spotId).map((s) => s.id));
+    const catches = this.table<{ id: string; species_id: string; max_length_cm: number | null }>("catches");
+    const out: SpotPhoto[] = [];
+    for (const ph of this.table<{ id: string; session_id: string; catch_id: string | null; storage_path: string; taken_at: string }>("photos")) {
+      if (!sessions.has(ph.session_id)) continue;
+      const blob = await getBlob(ph.storage_path);
+      if (!blob) continue;
+      const c = catches.find((x) => x.id === ph.catch_id);
+      out.push({ id: ph.id, url: URL_.createObjectURL(blob), taken_at: ph.taken_at, species_id: c?.species_id ?? null, length: c?.max_length_cm ?? null });
+    }
+    return out.reverse();
+  }
+  async upsert(table: string, row: Record<string, unknown>) {
+    const rows = this.table<Record<string, unknown>>(table).filter((r) => r.id !== row.id);
+    const prev = this.table<Record<string, unknown>>(table).find((r) => r.id === row.id) ?? {};
+    localStorage.setItem(`demo_db_${table}`, JSON.stringify([...rows, { ...prev, ...row }]));
+  }
+  async update(table: string, id: string, patch: Record<string, unknown>) {
+    await this.upsert(table, { id, ...patch });
+  }
+  async uploadPhoto() { /* blobs stay in IndexedDB in demo mode */ }
 }
+
+const URL_ = globalThis.URL;
 
 /** Set when a production build is missing its Supabase settings (instead of silently using demo data). */
 export const configError: string | null = URL && KEY ? null : import.meta.env.DEV ? null

@@ -19,6 +19,7 @@ from .astro import TZ
 from .config import Home, Spot, load_config, spots_in_range
 from .features import FEATURE_VERSION, build_features
 from .fetch import fetch_all
+from .observed import backfill
 from .scoring import MODEL_VERSION, score_spot
 from .store import Store
 
@@ -93,6 +94,19 @@ def _archive_rows(run_id: str, today: dt.date, feats_by_spot: dict[str, pd.DataF
     return rows
 
 
+def _tide_rows(run_id: str, feats_by_spot: dict[str, pd.DataFrame], spots) -> list[dict]:
+    rows = []
+    tidal = {s.id for s in spots if s.tidal}
+    for sid, f in feats_by_spot.items():
+        if sid not in tidal or "sea_level" not in f or f["sea_level"].notna().sum() < 12:
+            continue
+        sl = f["sea_level"].dropna()
+        rows.append({"spot_id": sid, "run_id": run_id,
+                     "series": [[t.isoformat(), round(float(v), 3)] for t, v in sl.items()],
+                     "extremes": f.attrs.get("tide_extremes", [])})
+    return rows
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=7)
@@ -145,7 +159,16 @@ def main(argv: list[str] | None = None) -> int:
                  on_conflict="run_id")
     store.upsert("forecast_scores", rows, on_conflict="spot_id,species_id,block_start")
     store.delete_before("forecast_scores", "block_start", (now - pd.Timedelta(hours=6)).isoformat())
+    try:
+        store.upsert("tides", _tide_rows(run_id, feats_by_spot, cfg.spots), on_conflict="spot_id")
+    except RuntimeError as e:  # tides table arrives with migration 0006
+        problems.append(f"tides not saved: {str(e)[:120]}")
     if args.archive:
+        try:
+            n = backfill(cfg, store)
+            print(f"backfilled measured conditions for {n} trips")
+        except Exception as e:  # never let backfill break scoring
+            print(f"warn: backfill failed: {e}")
         store.upsert("forecast_archive", _archive_rows(run_id, now.date(), feats_by_spot),
                      on_conflict="run_date,spot_id")
         store.upload_gz("raw", f"{now:%Y/%m/%d}/{run_id}.json.gz", raw)

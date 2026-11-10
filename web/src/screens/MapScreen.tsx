@@ -1,6 +1,7 @@
 import "leaflet/dist/leaflet.css";
 import { useState } from "react";
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
+import { BANDS, bandFor } from "../lib/bands";
 import type { Origin, Spot, SpotWindow } from "../lib/types";
 
 interface Props {
@@ -13,11 +14,7 @@ interface Props {
 }
 
 function colour(score: number | undefined): string {
-  if (score === undefined) return "#aeaeb2";
-  if (score >= 70) return "#34c759";
-  if (score >= 60) return "#8fcf4a";
-  if (score >= 50) return "#ff9f0a";
-  return "#ff453a";
+  return score === undefined ? "#aeaeb2" : bandFor(score).color;
 }
 
 function ClickToAdd({ armed, onPick }: { armed: boolean; onPick: (lat: number, lon: number) => void }) {
@@ -64,11 +61,8 @@ export function MapScreen({ origin, spots, travel, results, openSpot, addSpotAt 
           : <button className="btn fab" onClick={() => setArmed(true)}>Add spot</button>}
       </div>
       <div className="legend">
-        <span><i style={{ background: "#34c759" }} />70+</span>
-        <span><i style={{ background: "#8fcf4a" }} />60</span>
-        <span><i style={{ background: "#ff9f0a" }} />50</span>
-        <span><i style={{ background: "#ff453a" }} />&lt;50</span>
-        <span><i style={{ background: "#c7c7cc" }} />not shown</span>
+        {BANDS.map((b) => <span key={b.id}><i style={{ background: b.color }} />{b.emoji}</span>)}
+        <span><i style={{ background: "#c7c7cc" }} />other</span>
       </div>
     </div>
   );

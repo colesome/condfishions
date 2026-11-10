@@ -97,6 +97,22 @@ class Store:
             return []
         return r.json()
 
+    def sessions_needing_backfill(self, days: int = 4) -> list[dict]:
+        """Finished trips from the last `days` days without an 'archive' observation."""
+        if not self.enabled:
+            return []
+        import datetime as dt
+        since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
+        r = requests.get(f"{self.url}/rest/v1/sessions",
+                         params={"select": "id,spot_id,start_ts,end_ts,observed_conditions(source)",
+                                 "end_ts": f"gte.{since}"},
+                         headers=self._h(), timeout=60)
+        if r.status_code >= 300:
+            print(f"warn: could not load sessions ({r.status_code})")
+            return []
+        return [s for s in r.json()
+                if not any(o.get("source") == "archive" for o in (s.get("observed_conditions") or []))]
+
     def upload_gz(self, bucket: str, path: str, obj) -> None:
         data = gzip.compress(dumps(obj).encode())
         if not self.enabled:

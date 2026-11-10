@@ -84,7 +84,7 @@ export function Places(p: Props) {
 
   return (
     <div className="screen">
-      <div className="title-row"><h1>Places</h1></div>
+      <div className="title-row"><h1>Settings</h1></div>
 
       <div className="group">
         <label className="row">
