@@ -145,3 +145,27 @@ def test_light_periods():
     assert 6 <= rise.hour <= 7 and 17 <= sset.hour <= 18
     assert astro.light_period(rise, lat, lon) == "dawn"
     assert astro.light_period(rise + dt.timedelta(hours=5), lat, lon) == "day"
+
+
+def test_user_spots_merge():
+    from condfishions.run import merge_user_spots
+    c = load_config()
+    n = len(c.spots)
+    warns = merge_user_spots(c, [
+        {"id": "user_byron_wall", "name": "Holiday wall", "lat": -28.64, "lon": 153.62, "type": "rockwall",
+         "tidal": True, "facing": 90, "shelter": 0.3, "swell_max": 2.0, "species": ["tailor", "dory"],
+         "source": "user"},
+        {"id": "user_bad", "name": "x", "lat": -28, "lon": 153, "type": "beach", "tidal": True,
+         "facing": 90, "shelter": 0.2, "species": ["dory"]},
+    ])
+    assert len(c.spots) == n + 1 and c.spot("user_byron_wall").species == ["tailor"]
+    assert any("user_bad" in w for w in warns)
+
+
+def test_store_output_is_strict_json(cfg, payload, tmp_path, monkeypatch):
+    from condfishions.store import dumps
+    now = pd.Timestamp("2026-07-08T04:00", tz=TZ)
+    spot = cfg.spot("somerset_dam")  # no tide -> NaN-prone columns
+    rows = score_spot(cfg, spot, build_features(spot, payload["weather"][spot.id], None, now))
+    json.loads(dumps(rows))  # raises on NaN
+    assert dumps({"x": float("nan")}) == '{"x": null}'

@@ -3,12 +3,28 @@ from __future__ import annotations
 
 import gzip
 import json
+import math
 import os
 from pathlib import Path
 
 import requests
 
 from .config import ROOT
+
+
+def clean(obj):
+    """Replace NaN/inf with None recursively — JSON and Postgres reject NaN."""
+    if isinstance(obj, float):
+        return None if math.isnan(obj) or math.isinf(obj) else obj
+    if isinstance(obj, dict):
+        return {k: clean(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [clean(v) for v in obj]
+    return obj
+
+
+def dumps(obj, **kw) -> str:
+    return json.dumps(clean(obj), default=str, allow_nan=False, **kw)
 
 
 class Store:
@@ -37,7 +53,7 @@ class Store:
             r = requests.post(
                 f"{self.url}/rest/v1/{table}", params={"on_conflict": on_conflict},
                 headers=self._h({"Prefer": "resolution=merge-duplicates,return=minimal"}),
-                data=json.dumps(rows[i:i + chunk], default=str), timeout=120)
+                data=dumps(rows[i:i + chunk]), timeout=120)
             if r.status_code >= 300:
                 raise RuntimeError(f"upsert {table} failed {r.status_code}: {r.text[:500]}")
 
@@ -48,7 +64,7 @@ class Store:
             self._dump(table, rows)
             return
         r = requests.post(f"{self.url}/rest/v1/{table}", headers=self._h({"Prefer": "return=minimal"}),
-                          data=json.dumps(rows, default=str), timeout=120)
+                          data=dumps(rows), timeout=120)
         if r.status_code >= 300:
             raise RuntimeError(f"insert {table} failed {r.status_code}: {r.text[:500]}")
 
@@ -70,8 +86,19 @@ class Store:
             return None
         return r.json()[0]
 
+    def get_user_spots(self) -> list[dict]:
+        """Spots added from the app (source = 'user')."""
+        if not self.enabled:
+            return []
+        r = requests.get(f"{self.url}/rest/v1/spots", params={"source": "eq.user", "select": "*"},
+                         headers=self._h(), timeout=60)
+        if r.status_code >= 300:
+            print(f"warn: could not load user spots ({r.status_code})")
+            return []
+        return r.json()
+
     def upload_gz(self, bucket: str, path: str, obj) -> None:
-        data = gzip.compress(json.dumps(obj, default=str).encode())
+        data = gzip.compress(dumps(obj).encode())
         if not self.enabled:
             p = self.out / bucket / path
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -87,4 +114,4 @@ class Store:
     def _dump(self, table: str, rows: list[dict]) -> None:
         p = self.out / f"{table}.json"
         existing = json.loads(p.read_text()) if p.exists() else []
-        p.write_text(json.dumps(existing + rows, default=str, indent=1))
+        p.write_text(dumps(existing + rows, indent=1))
