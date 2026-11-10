@@ -1,13 +1,13 @@
 import "leaflet/dist/leaflet.css";
 import { useState } from "react";
 import { Circle, CircleMarker, MapContainer, TileLayer, Tooltip, useMapEvents } from "react-leaflet";
-import type { Origin, Score, Spot } from "../lib/types";
+import type { Origin, Spot, SpotWindow } from "../lib/types";
 
 interface Props {
   origin: Origin;
   spots: Spot[];
   travel: Map<string, number>;
-  results: Score[] | null;
+  results: SpotWindow[] | null;
   openSpot: (id: string) => void;
   addSpotAt: (lat: number, lon: number) => void;
 }
@@ -28,7 +28,7 @@ function ClickToAdd({ armed, onPick }: { armed: boolean; onPick: (lat: number, l
 export function MapScreen({ origin, spots, travel, results, openSpot, addSpotAt }: Props) {
   const [armed, setArmed] = useState(false);
   const best = new Map<string, number>();
-  for (const r of results ?? []) best.set(r.spot_id, Math.max(best.get(r.spot_id) ?? 0, r.score));
+  for (const r of results ?? []) best.set(r.spot_id, r.top_score);
   // rough radius of the travel range for orientation only
   const radiusM = Math.max(5, (origin.max_travel_min - 10) * 0.85) * 1000;
 

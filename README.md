@@ -53,10 +53,10 @@ the species' `base_rate`. Phase 4 recalibrates this from your real sessions.
 An installable web app (PWA) hosted free on GitHub Pages. You add it to your iPhone home
 screen and it opens full-screen like any other app. Only your login can see data.
 
-- **Fish:** best windows within range for a time window (next 6 h, today, tonight, tomorrow,
-  weekend, 3 days) and species, sorted by conditions or catch chance, with the reasons.
-- **Spot page:** a 7-day strip of 3-hour scores per species. Tap a block for its reasons,
-  wind, sea, tide, water temp and rain, plus a directions link.
+- **Fish:** spots ranked by their best 3-hour window (next 6 h, today, tonight, tomorrow, weekend,
+  3 days), with the species likely there and why. Saltwater by default, with a Freshwater toggle.
+- **Spot page:** a 7-day strip of 3-hour scores. Tap a block for each species' score, chance and
+  reasons, plus wind, sea, tide, water temp and rain. Directions link.
 - **Map:** spots coloured by score; out-of-range spots greyed. **＋ Add a spot** lets you tap a
   location and describe it (type, which way you cast, exposure, species). Scored from the next run.
 - **Places:** change home and travel range (30 min – 7 h), save places (Home, Holiday…),
@@ -67,7 +67,7 @@ screen and it opens full-screen like any other app. Only your login can see data
 ## Setup (one-off, about 20 minutes)
 
 1. **Supabase:** create a free project. In the SQL editor run
-   `supabase/migrations/0001_init.sql`, then `0002_places_user_spots.sql`.
+   `supabase/migrations/0001_init.sql`, then `0002_places_user_spots.sql`, then `0003_spot_windows.sql`.
    Create your user under *Authentication → Users*, then **turn off sign-ups**.
 2. **GitHub secrets** (*Settings → Secrets and variables → Actions*):
    - `SUPABASE_URL`

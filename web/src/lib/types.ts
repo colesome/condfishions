@@ -57,3 +57,26 @@ export interface Settings {
 export interface Run { run_id: string; created_at: string; n_scores: number; problems: string[] | null }
 
 export interface Origin { name: string; lat: number; lon: number; max_travel_min: number; gps: boolean }
+
+export interface SpeciesScore {
+  species_id: string;
+  score: number;
+  p_success: number;
+  reasons: Reason[];
+  regulations: Reg[];
+  conditions: Record<string, number | string | null>;
+}
+
+/** One spot's best 3-hour block in a window, with every species' score in that block. */
+export interface SpotWindow {
+  spot_id: string;
+  block_start: string;
+  block_hours: number;
+  top_score: number;
+  p_any: number;
+  safety: "ok" | "caution";
+  safety_text: string | null;
+  species: SpeciesScore[];
+}
+
+export type Water = "salt" | "fresh";

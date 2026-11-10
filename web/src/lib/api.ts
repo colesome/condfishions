@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Run, Score, Settings, Species, Spot } from "./types";
+import { bestPerSpot } from "./aggregate";
+import type { Run, Score, Settings, Species, Spot, SpotWindow } from "./types";
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -14,7 +15,7 @@ export interface Api {
   species(): Promise<Species[]>;
   settings(): Promise<Settings>;
   saveSettings(s: Settings): Promise<void>;
-  bestBlocks(spotIds: string[], species: string[] | null, from: Date, to: Date): Promise<Score[]>;
+  spotWindows(spotIds: string[], from: Date, to: Date): Promise<SpotWindow[]>;
   spotScores(spotId: string, from: Date): Promise<Score[]>;
   addSpot(s: Spot): Promise<void>;
   deleteSpot(id: string): Promise<void>;
@@ -55,10 +56,11 @@ class SupabaseApi implements Api {
   async saveSettings(s: Settings) {
     await this.q(this.sb.from("settings").upsert({ id: 1, ...s, updated_at: new Date().toISOString() }));
   }
-  bestBlocks(spotIds: string[], species: string[] | null, from: Date, to: Date) {
-    return this.q<Score[]>(this.sb.rpc("best_blocks", {
-      p_spots: spotIds, p_species: species, p_from: from.toISOString(), p_to: to.toISOString(),
+  async spotWindows(spotIds: string[], from: Date, to: Date) {
+    const rows = await this.q<SpotWindow[]>(this.sb.rpc("best_spot_windows", {
+      p_spots: spotIds, p_from: from.toISOString(), p_to: to.toISOString(),
     }));
+    return rows.map((r) => ({ ...r, top_score: Number(r.top_score), p_any: Number(r.p_any) }));
   }
   spotScores(spotId: string, from: Date) {
     return this.q<Score[]>(this.sb.from("forecast_scores").select("*").eq("spot_id", spotId)
@@ -102,19 +104,13 @@ class DemoApi implements Api {
     return s ? (JSON.parse(s) as Settings) : DEFAULT_SETTINGS;
   }
   async saveSettings(s: Settings) { localStorage.setItem("demo_settings", JSON.stringify(s)); }
-  async bestBlocks(spotIds: string[], species: string[] | null, from: Date, to: Date) {
+  async spotWindows(spotIds: string[], from: Date, to: Date) {
     const all = await this.load<Score[]>("forecast_scores");
     const ids = new Set(spotIds);
-    const best = new Map<string, Score>();
-    for (const r of all) {
+    return bestPerSpot(all.filter((r) => {
       const t = new Date(r.block_start);
-      if (!ids.has(r.spot_id) || (species && !species.includes(r.species_id)) || r.safety === "no_go"
-        || t < from || t >= to) continue;
-      const k = `${r.spot_id}|${r.species_id}`;
-      const b = best.get(k);
-      if (!b || r.score > b.score) best.set(k, r);
-    }
-    return [...best.values()];
+      return ids.has(r.spot_id) && t >= from && t < to;
+    }));
   }
   async spotScores(spotId: string, from: Date) {
     const all = await this.load<Score[]>("forecast_scores");
@@ -126,5 +122,10 @@ class DemoApi implements Api {
   async lastRun() { return { run_id: "demo", created_at: this.nowTs.toISOString(), n_scores: 0, problems: [] }; }
   async rescore() { return false; }
 }
+
+/** Set when a production build is missing its Supabase settings (instead of silently using demo data). */
+export const configError: string | null = URL && KEY ? null : import.meta.env.DEV ? null
+  : "This build isn't connected to your database. Add the SUPABASE_ANON_KEY (and SUPABASE_URL) repository "
+    + "secrets in GitHub, then run Actions → Deploy phone app.";
 
 export const api: Api = URL && KEY ? new SupabaseApi(URL, KEY) : new DemoApi();
