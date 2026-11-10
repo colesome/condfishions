@@ -1,0 +1,39 @@
+name: Score fishing conditions
+
+on:
+  schedule:
+    - cron: "47 18 * * *"          # 04:47 AEST — daily run that also archives
+    - cron: "47 0,6,12 * * *"      # 10:47, 16:47, 22:47 AEST — refresh scores
+  workflow_dispatch:
+    inputs:
+      archive:
+        description: "Archive raw payloads + daily snapshot"
+        type: boolean
+        default: false
+
+concurrency:
+  group: score
+  cancel-in-progress: false
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: Score
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ARGS="--print"
+          if [ "${{ github.event.schedule }}" = "47 18 * * *" ] || [ "${{ inputs.archive }}" = "true" ]; then
+            ARGS="$ARGS --archive"
+          fi
+          python -m condfishions.run $ARGS

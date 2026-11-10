@@ -1,122 +1,90 @@
-# SEQ Fishing Forecast Routine
+# CondFishions
 
-Daily WhatsApp message with the 5 best spot+window combinations across
-13 spots from Fingal Head to Noosa, ranked by solunar bite periods,
-dawn/dusk, tide movement, wind, and swell.
+Personal fishing-conditions app for land-based fishing in SEQ and far-northern NSW.
+It scores spot × species × 3-hour windows for the next 7 days, explains each score,
+and (in later phases) learns from your own session logs.
 
-**Data sources (all free):**
-- Open-Meteo forecast + marine — wind and swell, all spots in one call each
-- solunar.org — major/minor bite windows, sunrise/sunset (3 calls/day)
-- Stormglass — tide extremes, 2 reference points only (2 calls/day, free tier)
-- CallMeBot — free personal WhatsApp delivery
+**Running cost: $0.** GitHub Actions + Supabase free tier + Open-Meteo.
 
----
+```
+GitHub Actions (every 6 h)            Supabase (free)                 Phone app (Phase 1)
+fetch Open-Meteo weather + marine ─►  forecast_scores (latest)   ◄──  suggestions, check-in,
+compute tide / sun / moon locally     forecast_archive (daily)        catches, photos, skunks
+score with config/species.yaml        sessions, catches, photos  ──►  learning layer (Phase 4)
+```
 
-## Step 1 — Activate CallMeBot (one-time)
+## Status — Phase 0 (scoring engine)
 
-1. Add this number to your WhatsApp contacts: **+34 644 47 95 71**
-2. Send it this exact message via WhatsApp:
-   `I allow callmebot to send me messages`
-3. It will reply with your API key — save it.
+- `config/spots.yaml` — 52 land-based spots (Noosa → Brunswick Heads, Moreton/Straddie, bass dams).
+  Coordinates are approximate (`verified: false`); fix as you visit them.
+- `config/species.yaml` — transparent baseline rules for bream, flathead, tailor, trevally,
+  jewfish, kingfish, Spanish mackerel, sharks and Australian bass, plus closed-season / permit flags.
+- `config/home.yaml` — home location and max travel minutes. Change it to widen or narrow the range.
+- `condfishions/` — fetch → features → score → store.
+- `supabase/migrations/0001_init.sql` — full schema, including session logging tables for Phase 2.
+- `legacy/condfishions_agent.py` — the old WhatsApp agent, kept for reference.
 
----
+## How a score works
 
-## Step 2 — Get a Stormglass key
+`score = 50 + Σ factor contributions`, clipped 0–100, normalised by the factors that apply.
 
-Sign up at https://dashboard.stormglass.io/register — free tier
-includes 10 requests/day. This script uses 2/day, so you'll never hit it.
+| Factor | Source | Example |
+|---|---|---|
+| Season | species month table | tailor peak Jun–Sep |
+| Light | sunrise/sunset (ephem) | dawn/dusk, night for jewfish |
+| Tide phase | Open-Meteo sea level → extremes | flathead: last of the run-out |
+| Spring/neap | moon age | bigger tides help jewfish |
+| Water temp | Open-Meteo marine SST | Spanish mackerel >23 °C |
+| Wind | speed × onshore component × spot shelter | 25 km/h onshore at a beach = bad |
+| Swell | wave height vs spot limit | tailor like some wash |
+| Rain (72 h) | Open-Meteo | jewfish/bass/sharks like a fresh |
+| Pressure trend | Open-Meteo | slow fall = slight plus |
+| Solunar | moon transit/rise/set | small weight, kept testable |
 
----
+**Safety gate:** rock, rock wall and beach spots go *no-go* when the sea reaches the spot's
+`swell_max` (lowered 20 % for long-period swell ≥12 s) or gusts reach 60 km/h on rocks.
+A no-go always scores 0, and no model may override it.
 
-## Step 3 — Push to GitHub
+`p_success` maps the score to a chance of catching ≥1 of that species. A score of 50 equals
+the species' `base_rate`. Phase 4 recalibrates this from your real sessions.
 
-Create a repo and push these three files:
+## Setup (one-off, about 15 minutes)
+
+1. **Supabase:** create a free project, open the SQL editor and run
+   `supabase/migrations/0001_init.sql`. Create your user under *Authentication → Users*,
+   then **turn off sign-ups**.
+2. **GitHub secrets** (*Settings → Secrets → Actions*): `SUPABASE_URL` and
+   `SUPABASE_SERVICE_KEY` (service-role key — never put it in the phone app).
+3. **Actions:** run *Score fishing conditions* manually once (tick *archive*). After that it
+   runs four times a day, which also keeps the free Supabase project from pausing.
+
+## Local use
 
 ```bash
-git init && git add fishing.py requirements.txt README.md
-git commit -m "fishing routine"
-git remote add origin git@github.com:<you>/fishing-routine.git
-git push -u origin main
+pip install -r requirements.txt
+python -m condfishions.spots                         # spots within range of home
+python -m condfishions.spots --at -27.32,153.08 --max 60
+python -m condfishions.run --print                   # live (needs internet); writes ./out if no Supabase env
+python tests/make_fixture.py && python -m condfishions.run \
+    --fixture tests/fixtures/sample_payload.json --now 2026-07-08T04:00 --print   # offline
+python -m pytest -q
 ```
 
----
+## Roadmap
 
-## Step 4 — Create the Claude Code Routine
-
-Go to https://claude.ai/code/routines → **New routine**
-
-**Name:** `Fishing forecast`
-
-**Prompt:**
-```
-Run `python fishing.py` from the repo root.
-If it exits non-zero, send a WhatsApp via CALLMEBOT_API_KEY to 61477282003:
-"Fishing routine failed: <first line of stderr>".
-Do not commit or push anything.
-```
-
-**Repositories:** select your `fishing-routine` repo
-
-**Environment → click the settings icon → edit:**
-- Network access → **Custom**
-  - Add allowed domains:
-    ```
-    api.open-meteo.com
-    marine-api.open-meteo.com
-    api.solunar.org
-    api.stormglass.io
-    api.callmebot.com
-    ```
-  - Tick **"Also include default list of common package managers"**
-    (so pip can install tzdata)
-- Environment variables:
-  - `STORMGLASS_API_KEY` = your token
-  - `CALLMEBOT_API_KEY` = your CallMeBot key
-- Setup script: `pip install -r requirements.txt`
-
-**Connectors:** remove all (not needed — delivery goes via CallMeBot)
-
-**Trigger → Schedule → Daily** — set your preferred time (e.g. 5:30 AM)
-
-Click **Create**, then **Run now** to test. Open the run transcript
-to confirm the WhatsApp went through.
-
----
-
-## Spots covered
-
-| Spot | Type |
+| Phase | Delivers |
 |---|---|
-| Fingal Head | Rock — open coast |
-| Snapper Rocks | Rock — open coast |
-| Burleigh Heads | Rock/headland |
-| GC Seaway | Rock walls / estuary |
-| Jumpinpin | Bar / estuary |
-| Point Lookout (Straddie) | Rock — exposed |
-| Manly (Brisbane bay) | Bay — sheltered |
-| Redcliffe | Bay — sheltered |
-| Bribie (Woorim) | Beach / passage |
-| Caloundra | Rock/beach — semi |
-| Mooloolaba | Rock/beach |
-| Maroochydore | Estuary / beach |
-| Noosa NP | Rock/beach — semi |
+| 0 ✅ | Scoring engine, spot catalogue, schema, scheduled job |
+| 1 | Phone app (installable PWA): suggestions, reasons, safety, map, range setting |
+| 2 | Check-in, catch + skunk logging, photos, offline sync, observed-conditions backfill (MSQ gauges) |
+| 3 | Push alerts, forecast-vs-actual and baseline-calibration pages |
+| 4 | Learning layer (hierarchical recalibration of the baseline), champion/challenger, wildcard picks |
 
-Bay spots (Manly, Redcliffe) are never penalised for swell — they're sheltered.
-Open spots (Fingal through Noosa headlands) get a safety flag if swell > 2.0 m.
-Offshore wind (SW–NW) gets a small bonus; onshore (NE–SE) loses points.
+## Data sources
 
----
-
-## Tuning thresholds
-
-Edit the config block at the top of `fishing.py`:
-
-```python
-WIND_OK   = 15   # km/h — above this starts penalising
-WIND_BAD  = 25   # above this, heavy penalty
-SWELL_OK  = 1.0  # m — above this, moderate penalty (open spots)
-SWELL_BAD = 2.0  # m — above this, safety flag + heavy penalty
-```
-
-To add or change spots, edit the `SPOTS` list. Set `"exp"` to
-`"open"`, `"semi"`, or `"bay"` to control swell treatment.
+- [Open-Meteo](https://open-meteo.com) forecast + marine APIs (free, non-commercial).
+- [MSQ tide open data](https://www.msq.qld.gov.au/tides/open-data) — predicted and observed
+  gauges (Phase 1–2, used to calibrate `tide_offset_min` and backfill actual conditions).
+- Sun, moon and solunar are computed locally with `ephem`.
+- Regulations: QLD DAF closed seasons, NSW DPI bass closure, QLD SIP permits. **Verify them
+  each season.**

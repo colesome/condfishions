@@ -1,0 +1,6 @@
+# Default "home" used to filter spots by travel time.
+# The app will let you override this (or use your phone's GPS); this is the fallback.
+name: Brisbane CBD
+lat: -27.4698
+lon: 153.0251
+max_travel_min: 120     # spots further than this are hidden (change to expand range)

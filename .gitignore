@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+out/
+tests/fixtures/sample_payload.json
+.env
