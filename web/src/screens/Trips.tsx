@@ -161,6 +161,7 @@ function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onSpeciesRemove
   onSave: (c: { species_id: string; length: number | null; released: boolean; photo: Blob | null }) => Promise<void>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const libRef = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [sp, setSp] = useState<string>(spot.species[0]);
@@ -196,10 +197,19 @@ function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onSpeciesRemove
       </div>
       <h1>Log a catch</h1>
 
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => pick(e.target.files?.[0])} />
-      <button className="photo-drop" onClick={() => fileRef.current?.click()}>
-        {preview ? <img src={preview} alt="" /> : <span>📸<br />Take a photo<small>optional</small></span>}
-      </button>
+      {/* camera: capture opens the camera directly; library: no capture → Photos picker */}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden
+        onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+      <input ref={libRef} type="file" accept="image/*" hidden
+        onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+      <div className="photo-drop">
+        {preview ? <img src={preview} alt="" /> : <span>📸<br />Add a photo<small>optional</small></span>}
+      </div>
+      <div className="photo-actions">
+        <button className="btn photo-btn" onClick={() => fileRef.current?.click()}>📷 Take photo</button>
+        <button className="btn photo-btn photo-btn-alt" onClick={() => libRef.current?.click()}>🖼️ From library</button>
+      </div>
+      {preview && <button className="link small-link" onClick={() => { setPhoto(null); if (preview) URL.revokeObjectURL(preview); setPreview(null); }}>Remove photo</button>}
 
       <div className="group-title">Species</div>
       <div className="pick-grid">
