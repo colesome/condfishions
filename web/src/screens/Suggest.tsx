@@ -1,5 +1,4 @@
 import { Chip, ScoreBadge } from "../components/ui";
-import { rankValue } from "../lib/rank";
 import { WINDOWS, fmtWhen, type WindowId } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
 import type { Origin, Species, Spot, SpotWindow, Water } from "../lib/types";
@@ -29,11 +28,9 @@ export function shortName(sp: Species | undefined, id: string): string {
 
 export function Suggest(p: Props) {
   const ranked = (p.results ?? [])
-    .map((r) => ({ r, rank: rankValue(r.top_score, p.travel.get(r.spot_id) ?? 999) }))
-    .sort((a, b) => b.rank - a.rank)
-    .slice(0, 25)
-    .map((x) => x.r);
-  const spName = (id: string) => shortName(p.species.find((s) => s.id === id), id);
+    .slice()
+    .sort((a, b) => b.top_score - a.top_score)
+    .slice(0, 25);
 
   return (
     <div className="screen">
@@ -56,7 +53,7 @@ export function Suggest(p: Props) {
         ))}
       </div>
 
-      <p className="caption">Best time at each spot, ranked by conditions — closer spots win a close call.</p>
+      <p className="caption">Best time at each spot, rated on conditions for catching fish (50 = average). Tap a spot for each species.</p>
 
       {p.stale && <div className="banner">Offline — showing your last update.</div>}
       {p.error && !p.stale && <div className="banner banner-err">{p.error}</div>}
@@ -72,7 +69,7 @@ export function Suggest(p: Props) {
         {ranked.map((r) => {
           const spot = p.spots.get(r.spot_id);
           if (!spot) return null;
-          const why = (r.species[0]?.reasons ?? []).filter((x) => x.points > 0).slice(0, 3).map((x) => x.text);
+          const why = topReasons(r);
           const regs = [...new Map(r.species.flatMap((s) => s.regulations ?? []).map((g) => [g.id, g])).values()];
           return (
             <li key={r.spot_id} className="card" onClick={() => p.openSpot(r.spot_id)}>
@@ -80,9 +77,7 @@ export function Suggest(p: Props) {
               <div className="card-body">
                 <div className="card-name">{spot.name}</div>
                 <div className="card-when">{fmtWhen(r.block_start, r.block_hours, p.now)}</div>
-                <div className="card-meta">
-                  {fmtTravel(p.travel.get(r.spot_id) ?? 0)} away · {r.species.slice(0, 3).map((s) => spName(s.species_id)).join(", ")}
-                </div>
+                <div className="card-meta">{fmtTravel(p.travel.get(r.spot_id) ?? 0)} away</div>
                 {why.length > 0 && <div className="card-why">{capitalise(why.join(", "))}</div>}
                 {r.safety === "caution" && <span className="flag flag-warn">{r.safety_text ?? "Caution"}</span>}
                 {regs.filter((g) => g.action !== "permit").map((g) => (
@@ -97,6 +92,20 @@ export function Suggest(p: Props) {
       </ol>
     </div>
   );
+}
+
+/** Reasons shared by the most species at this spot (spot-level "why"), strongest first. */
+function topReasons(r: SpotWindow): string[] {
+  const tally = new Map<string, { text: string; pts: number; n: number }>();
+  for (const sp of r.species) {
+    for (const x of sp.reasons) {
+      if (x.points <= 0 || x.factor === "season") continue;
+      const t = tally.get(x.factor) ?? { text: x.text, pts: 0, n: 0 };
+      t.pts += x.points; t.n += 1;
+      tally.set(x.factor, t);
+    }
+  }
+  return [...tally.values()].sort((a, b) => b.pts - a.pts).slice(0, 3).map((t) => t.text);
 }
 
 function capitalise(s: string): string {

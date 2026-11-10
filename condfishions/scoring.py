@@ -1,8 +1,11 @@
-"""Transparent rules-based baseline scorer (model_version = baseline_v1).
+"""Transparent rules-based baseline scorer (model_version = baseline_v2).
 
-score = 50 + sum(weight_i * factor_i), clipped to 0..100, where each factor is in [-1, 1]
-(or skipped when it doesn't apply). Every contribution is kept so the app can show
-exactly why a spot scored what it did.
+score = conditions rating = 50 + sum(weight_i * factor_i), clipped 0..100. 50 = average
+conditions for that species, regardless of how common the species is. Each factor is in
+[-1, 1] (skipped when it doesn't apply). Weather only counts when it changes how fish behave
+or makes fishing hard — calm, pleasant weather on its own earns nothing.
+p_success (P(catch >= 1) from the rating and the species' base rate) is stored for the
+learning layer but not used for ranking.
 """
 from __future__ import annotations
 
@@ -15,7 +18,7 @@ import pandas as pd
 from .config import EXPOSED_TYPES, Config, Regulation, Species, Spot
 from .tides import describe_phase
 
-MODEL_VERSION = "baseline_v1"
+MODEL_VERSION = "baseline_v2"
 COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 
 
@@ -73,26 +76,25 @@ def f_sst(sp: Species, sst):
 def f_wind(spot: Spot, speed, direction, gust):
     if not _ok(speed):
         return None
+    # Wind only ever subtracts: it can make fishing hard, but calm weather doesn't put fish on.
     if spot.fresh:
-        v = 0.3 if speed <= 10 else _lerp(speed, 10, 30, 0.3, -0.7)
-        return v, f"{speed:.0f} km/h {compass(direction)}"
+        v = 0.0 if speed <= 15 else _lerp(speed, 15, 35, 0.0, -0.7)
+        return (v, f"{speed:.0f} km/h {compass(direction)} wind") if v < 0 else None
     exposure = 1 - spot.shelter
     onshore = math.cos(math.radians((direction or 0) - spot.facing)) if _ok(direction) else 0.0
     eff = speed * (0.4 + 0.6 * exposure * max(onshore, 0.0))
-    if eff <= 8:
-        v = 0.5
-    elif eff <= 15:
-        v = _lerp(eff, 8, 15, 0.5, 0.0)
+    if eff <= 15:
+        v = 0.0
     elif eff <= 25:
         v = _lerp(eff, 15, 25, 0.0, -0.7)
     else:
         v = -1.0
     label = "onshore" if onshore > 0.5 else "offshore" if onshore < -0.5 else "cross-shore"
-    if label == "offshore" and speed <= 20 and exposure >= 0.5:
-        v = min(1.0, v + 0.3)
     if _ok(gust) and gust >= 45:
         v = -1.0
-    return v, f"{speed:.0f} km/h {compass(direction)} ({label})"
+    if v >= 0:
+        return None
+    return v, f"{speed:.0f} km/h {compass(direction)} ({label}) makes it hard"
 
 
 def f_swell(sp: Species, spot: Spot, hs):
@@ -101,10 +103,14 @@ def f_swell(sp: Species, spot: Spot, hs):
     lim = spot.swell_max or 2.5
     r = hs / lim
     if sp.swell_pref == "wash":
+        # some whitewater genuinely brings these fish in close (fish behaviour, not comfort)
         v = -0.2 if hs < 0.4 else 0.7 if r < 0.6 else 0.0 if r < 0.85 else -1.0
-    else:  # calm
-        v = 0.6 if r < 0.35 else 0.0 if r < 0.6 else -0.8
-    return v, f"{hs:.1f} m sea"
+        txt = f"{hs:.1f} m sea — good wash" if v > 0 else f"{hs:.1f} m sea"
+    else:  # calm-water species: rough water hurts, calm water is just normal
+        if r < 0.6:
+            return None
+        v, txt = -0.8, f"{hs:.1f} m sea too rough"
+    return v, txt
 
 
 def f_rain(sp: Species, rain72):
@@ -265,12 +271,12 @@ def score_spot(cfg: Config, spot: Spot, feats: pd.DataFrame, block_h: int = 3,
             best = max(hrs, key=lambda h: h.score)
             safety = "no_go" if any(h.safety == "no_go" for h in hrs) else \
                      "caution" if any(h.safety == "caution" for h in hrs) else "ok"
-            score = round(sum(h.score for h in hrs) / len(hrs), 1)
+            cond = round(sum(h.score for h in hrs) / len(hrs), 1)
             regs = regulation_flags(cfg, spot, sid, start.date())
-            if any(r.action == "closed" for r in regs):
-                score = 0.0
-            if safety == "no_go":
-                score = 0.0
+            closed = any(r.action == "closed" for r in regs)
+            blocked = closed or safety == "no_go"
+            p = 0.0 if blocked else p_success(cond, sp.base_rate)
+            score = 0.0 if blocked else cond  # conditions rating: what the app shows
             r_best = feats.loc[best.time]
             rows.append({
                 "spot_id": spot.id,
@@ -279,12 +285,12 @@ def score_spot(cfg: Config, spot: Spot, feats: pd.DataFrame, block_h: int = 3,
                 "block_hours": block_h,
                 "best_hour": best.time.isoformat(),
                 "score": score,
-                "p_success": p_success(score, sp.base_rate),
+                "p_success": p,
                 "safety": safety,
                 "safety_text": next((h.safety_text for h in hrs if h.safety_text), None),
                 "reasons": reasons(best.contributions),
                 "regulations": [{"id": r.id, "action": r.action, "text": r.text} for r in regs],
-                "conditions": _conditions(r_best),
+                "conditions": {**_conditions(r_best), "cond_score": cond},
                 "model_version": MODEL_VERSION,
             })
     return rows

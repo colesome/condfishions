@@ -26,7 +26,12 @@ score with config/species.yaml        sessions, catches, photos  ──►  lear
 
 ## How a score works
 
-`score = 50 + Σ factor contributions`, clipped 0–100, normalised by the factors that apply.
+Each species gets a **conditions rating**: `50 + Σ factor contributions`, clipped 0–100, where 50
+means average conditions *for that species* — a rare fish isn't rated lower for being rare.
+A **spot's rating** is the average across the species found there, so spots are ranked on
+conditions, not on which fish they hold; tap a spot to see each species. Weather only counts when
+it changes fish behaviour (e.g. wash for tailor) or makes fishing hard (strong onshore wind,
+rough sea) — calm, pleasant weather on its own adds nothing.
 
 | Factor | Source | Example |
 |---|---|---|
@@ -35,8 +40,8 @@ score with config/species.yaml        sessions, catches, photos  ──►  lear
 | Tide phase | Open-Meteo sea level → extremes | flathead: last of the run-out |
 | Spring/neap | moon age | bigger tides help jewfish |
 | Water temp | Open-Meteo marine SST | Spanish mackerel >23 °C |
-| Wind | speed × onshore component × spot shelter | 25 km/h onshore at a beach = bad |
-| Swell | wave height vs spot limit | tailor like some wash |
+| Wind | speed × onshore component × spot shelter (penalty only) | 25 km/h onshore at a beach = harder |
+| Swell | wave height vs spot limit | tailor like some wash; too rough = harder |
 | Rain (72 h) | Open-Meteo | jewfish/bass/sharks like a fresh |
 | Pressure trend | Open-Meteo | slow fall = slight plus |
 | Solunar | moon transit/rise/set | small weight, kept testable |
@@ -45,17 +50,16 @@ score with config/species.yaml        sessions, catches, photos  ──►  lear
 `swell_max` (lowered 20 % for long-period swell ≥12 s) or gusts reach 60 km/h on rocks.
 A no-go always scores 0, and no model may override it.
 
-`p_success` maps the score to a chance of catching ≥1 of that species. A score of 50 equals
-the species' `base_rate`. Phase 4 recalibrates this from your real sessions.
+`p_success` (chance of catching ≥1, from the rating and a starting-guess base rate per species) is
+stored for the learning layer but isn't shown or used for ranking.
 
 ## Phone app (`web/`)
 
 An installable web app (PWA) hosted free on GitHub Pages. You add it to your iPhone home
 screen and it opens full-screen like any other app. Only your login can see data.
 
-- **Fish:** spots ranked by their best 3-hour window, with the date and time, how far away, the
-  species likely there and why. One ranking: conditions first, with closer spots winning a close
-  call. Saltwater by default, Freshwater toggle.
+- **Fish:** spots ranked by conditions rating at their best 3-hour window, with the date and time, how
+  far away, the species likely there and why. Saltwater by default, Freshwater toggle.
 - **Spot page:** a 7-day strip of 3-hour scores. Tap a block for each species' score, chance and
   reasons, plus wind, sea, tide, water temp and rain. Directions link.
 - **Location:** if "Use my current location" fails on iPhone, allow it under Settings → Privacy &
@@ -70,7 +74,7 @@ screen and it opens full-screen like any other app. Only your login can see data
 ## Setup (one-off, about 20 minutes)
 
 1. **Supabase:** create a free project. In the SQL editor run
-   `0001_init.sql`, `0002_places_user_spots.sql` and `0003_spot_windows.sql` from `supabase/migrations/`, in that order.
+   the files in `supabase/migrations/` in number order (0004 is optional, see step 6).
    Create your user under *Authentication → Users*, then **turn off sign-ups**.
 2. **GitHub secrets** (*Settings → Secrets and variables → Actions*):
    - `SUPABASE_URL`

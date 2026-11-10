@@ -15,7 +15,7 @@ export function toBlocks(rows: Score[]): (SpotWindow & { no_go: boolean })[] {
       spot_id: g[0].spot_id,
       block_start: g[0].block_start,
       block_hours: g[0].block_hours,
-      top_score: ok.length ? sorted[0].score : 0,
+      top_score: ok.length ? Math.round((ok.reduce((a, r) => a + r.score, 0) / ok.length) * 10) / 10 : 0,
       p_any: ok.length ? Math.max(...use.map((r) => r.p_success)) : 0,
       safety: (use.some((r) => r.safety === "caution") ? "caution" : "ok") as "caution" | "ok",
       safety_text: g.find((r) => r.safety_text)?.safety_text ?? null,

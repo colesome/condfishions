@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import type { Reg, Score } from "../lib/types";
 
 export function scoreClass(score: number): string {
-  if (score >= 75) return "s-great";
+  // conditions rating: 50 = average conditions
+  if (score >= 70) return "s-great";
   if (score >= 60) return "s-good";
-  if (score >= 45) return "s-fair";
+  if (score >= 50) return "s-fair";
   return "s-poor";
 }
 
