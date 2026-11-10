@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ScoreBadge, pct, scoreClass } from "../components/ui";
+import { scoreClass } from "../components/ui";
 import { toBlocks } from "../lib/aggregate";
 import { api } from "../lib/api";
-import { hm, sameDay } from "../lib/time";
+import { fmtWhen, hm, sameDay } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
 import type { Score, Species, Spot } from "../lib/types";
 import { shortName } from "./Suggest";
@@ -60,33 +60,26 @@ export function SpotSheet({ spot, species, travelMin, now, onClose, onDeleted }:
 
   return (
     <div className="sheet">
-      <div className="sheet-head">
-        <button className="back" onClick={onClose} aria-label="Back">‹</button>
-        <div>
-          <h2>{spot.name}</h2>
-          <small className="muted">
-            {TYPE_LABEL[spot.type] ?? spot.type} · {spot.region} · {fmtTravel(travelMin)}
-            {spot.access && spot.access !== "car" ? ` · ${spot.access}` : ""}
-          </small>
-        </div>
+      <div className="navbar">
+        <button className="back" onClick={onClose}><span>‹</span>Back</button>
+        <a className="link" href={directions} target="_blank" rel="noreferrer">Directions</a>
       </div>
-
-      <div className="sheet-actions">
-        <a className="btn" href={directions} target="_blank" rel="noreferrer">Directions</a>
-        {spot.source === "user" && <button className="btn btn-ghost" onClick={del}>Delete spot</button>}
-      </div>
-      <p className="hint">Common here: {spot.species.map(spName).join(", ")}</p>
-      {!spot.verified && <p className="hint">Pin location is approximate — check it when you're there.</p>}
+      <h1>{spot.name}</h1>
+      <p className="sub">
+        {TYPE_LABEL[spot.type] ?? spot.type} · {fmtTravel(travelMin)} away
+        {spot.access && spot.access !== "car" ? ` · ${spot.access}` : ""}
+      </p>
+      <p className="sub">Common here: {spot.species.map(spName).join(", ")}</p>
 
       {err && <div className="banner banner-err">{err}</div>}
       {!rows && !err && <div className="empty">Loading…</div>}
       {rows && days.length === 0 && (
-        <div className="empty">No scores yet — new spots are scored on the next run (Places → Refresh now).</div>
+        <div className="empty">No scores yet — new spots are scored on the next update.</div>
       )}
 
       {days.map(({ day, blocks }) => (
         <section key={day.toISOString()} className="day">
-          <h3>{day.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" })}</h3>
+          <h3>{day.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}</h3>
           <div className="strip">
             {blocks.map((b) => (
               <button key={b.block_start}
@@ -99,31 +92,23 @@ export function SpotSheet({ spot, species, travelMin, now, onClose, onDeleted }:
           </div>
           {blocks.filter((b) => b.block_start === open).map((b) => (
             <div key={b.block_start} className="detail">
+              <div className="detail-when">{fmtWhen(b.block_start, b.block_hours, now)}</div>
               {b.no_go ? (
                 <div className="banner banner-err">{b.safety_text ?? "Unsafe in this window"}</div>
               ) : (
                 <>
-                  <div className="detail-head">
-                    <ScoreBadge score={b.top_score} size="sm" />
-                    <span>Best chance: {pct(b.p_any)} ({spName([...b.species].sort((x, y) => y.p_success - x.p_success)[0].species_id).toLowerCase()})</span>
-                  </div>
-                  {b.safety === "caution" && <span className="flag flag-warn">⚠ {b.safety_text}</span>}
+                  {b.safety === "caution" && <span className="flag flag-warn">{b.safety_text}</span>}
                   <ul className="sp-list">
                     {b.species.map((s) => (
                       <li key={s.species_id}>
                         <div className="sp-line">
                           <span className={`dot ${scoreClass(s.score)}`} />
-                          <b>{spName(s.species_id)}</b>
-                          <span className="muted">{pct(s.p_success)}</span>
-                          <b className="num">{Math.round(s.score)}</b>
+                          <span>{spName(s.species_id)}</span>
+                          <span className="num">{Math.round(s.score)}</span>
                         </div>
-                        <small className="muted">
-                          {s.reasons.slice(0, 3).map((x) => `${x.text} ${x.points >= 0 ? "+" : ""}${Math.round(x.points)}`).join(" · ")}
-                        </small>
+                        <small>{s.reasons.slice(0, 3).map((x) => x.text).join(" · ")}</small>
                         {s.regulations?.map((g) => (
-                          <span key={g.id} className={`flag ${g.action === "permit" ? "flag-info" : "flag-warn"}`}>
-                            {g.action === "permit" ? "🎫" : "⛔"} {g.text}
-                          </span>
+                          <span key={g.id} className={`flag ${g.action === "permit" ? "flag-info" : "flag-warn"}`}>{g.text}</span>
                         ))}
                       </li>
                     ))}
@@ -135,6 +120,13 @@ export function SpotSheet({ spot, species, travelMin, now, onClose, onDeleted }:
           ))}
         </section>
       ))}
+
+      {!spot.verified && <p className="hint">Pin location is approximate — check it when you're there.</p>}
+      {spot.source === "user" && (
+        <div className="group" style={{ marginTop: 24 }}>
+          <button className="row" style={{ color: "var(--poor)", justifyContent: "center" }} onClick={del}>Delete spot</button>
+        </div>
+      )}
     </div>
   );
 }

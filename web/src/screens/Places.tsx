@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../lib/api";
+import { getPosition } from "../lib/geo";
 import { ago } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
 import type { Place, Run, Settings } from "../lib/types";
@@ -26,32 +27,34 @@ export function Places(p: Props) {
   const [hits, setHits] = useState<Hit[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
+
+  const isActive = (pl: Place) => pl.name === s.home_name && pl.lat === s.home_lat && pl.lon === s.home_lon;
 
   const activate = (pl: Place) =>
     p.saveSettings({ ...s, home_name: pl.name, home_lat: pl.lat, home_lon: pl.lon, max_travel_min: pl.max_travel_min });
 
-  const setRange = (min: number) => {
-    const saved = s.saved_places.map((pl) =>
-      pl.name === s.home_name && pl.lat === s.home_lat && pl.lon === s.home_lon ? { ...pl, max_travel_min: min } : pl);
-    return p.saveSettings({ ...s, max_travel_min: min, saved_places: saved });
-  };
+  const setRange = (min: number) => p.saveSettings({
+    ...s, max_travel_min: min,
+    saved_places: s.saved_places.map((pl) => (isActive(pl) ? { ...pl, max_travel_min: min } : pl)),
+  });
 
-  const addPlace = (pl: Place) => {
-    const saved = [...s.saved_places.filter((x) => x.name !== pl.name), pl];
-    return p.saveSettings({ ...s, saved_places: saved, home_name: pl.name, home_lat: pl.lat, home_lon: pl.lon,
-      max_travel_min: pl.max_travel_min });
-  };
+  const addPlace = (pl: Place) => p.saveSettings({
+    ...s, saved_places: [...s.saved_places.filter((x) => x.name !== pl.name), pl],
+    home_name: pl.name, home_lat: pl.lat, home_lon: pl.lon, max_travel_min: pl.max_travel_min,
+  });
 
   const removePlace = (name: string) =>
     p.saveSettings({ ...s, saved_places: s.saved_places.filter((x) => x.name !== name) });
 
   async function search() {
     if (!q.trim()) return;
-    setBusy(true);
+    setBusy(true); setMsg(null);
     try {
-      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=au&q=${encodeURIComponent(q)}`,
-        { headers: { "Accept-Language": "en-AU" } });
-      setHits(await r.json());
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=au&q=${encodeURIComponent(q)}`);
+      const res: Hit[] = await r.json();
+      setHits(res);
+      if (!res.length) setMsg("No matches — try a town or suburb name.");
     } catch {
       setMsg("Search failed — check your connection.");
     } finally {
@@ -59,96 +62,95 @@ export function Places(p: Props) {
     }
   }
 
-  function hereAsPlace() {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const name = prompt("Name this place (e.g. Holiday house)", "Holiday");
-        if (name) addPlace({ name, lat: pos.coords.latitude, lon: pos.coords.longitude, max_travel_min: s.max_travel_min });
-      },
-      () => setMsg("Couldn't get your location — allow location access for this app in Settings."),
-      { enableHighAccuracy: false, timeout: 15000 },
-    );
+  async function saveHere() {
+    setMsg("Finding your location…");
+    try {
+      const g = await getPosition();
+      const name = prompt("Name this place", "Holiday");
+      setMsg(null);
+      if (name) addPlace({ name, lat: g.lat, lon: g.lon, max_travel_min: s.max_travel_min });
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
   }
 
   async function refresh() {
-    setMsg("Asking for a fresh scoring run…");
-    const ok = await api.rescore();
-    setMsg(ok ? "Run started — new scores in about 2 minutes." : "Couldn't trigger a run (is the rescore function set up?). Scores refresh 4× a day anyway.");
+    setRefreshMsg("Requesting an update…");
+    const r = await api.rescore();
+    setRefreshMsg(r === "requested" ? "Update started — new scores in about 2 minutes. Reopen the app then."
+      : r === "not_configured" ? "Refresh isn't set up yet (see README → Refresh button). Scores still update 4 times a day."
+      : "Couldn't request an update. Scores still update 4 times a day.");
   }
-
-  const isActive = (pl: Place) => pl.name === s.home_name && pl.lat === s.home_lat && pl.lon === s.home_lon;
 
   return (
     <div className="screen">
-      <header className="top"><h1>Places &amp; range</h1></header>
+      <div className="title-row"><h1>Places</h1></div>
 
-      <section className="panel">
-        <label className="toggle">
-          <input type="checkbox" checked={p.useGps} onChange={(e) => p.setUseGps(e.target.checked)} />
-          <span>
-            <b>Use my current location</b>
-            <small>Range is measured from wherever you are — handy when travelling. Not saved.</small>
-          </span>
+      <div className="group">
+        <label className="row">
+          <div className="row-main">Use my current location<small>For travelling — not saved</small></div>
+          <input className="switch" type="checkbox" checked={p.useGps} onChange={(e) => p.setUseGps(e.target.checked)} />
         </label>
-        {p.gpsError && <p className="hint err">{p.gpsError}</p>}
-      </section>
+      </div>
+      {p.gpsError && <p className="hint err">{p.gpsError}</p>}
 
-      <section className="panel">
-        <h3>Travel range</h3>
-        <p className="big">{fmtTravel(s.max_travel_min)} <small className="muted">· {p.inRangeCount} spots</small></p>
-        <input type="range" min={0} max={RANGES.length - 1} step={1}
-          value={Math.max(0, RANGES.findIndex((r) => r >= s.max_travel_min))}
-          onChange={(e) => setRange(RANGES[Number(e.target.value)])} />
-        <div className="range-labels"><span>30 min</span><span>7 h</span></div>
-      </section>
-
-      <section className="panel">
-        <h3>Saved places</h3>
-        <ul className="places">
-          {s.saved_places.map((pl) => (
-            <li key={pl.name} className={isActive(pl) ? "active" : ""}>
-              <button className="place-main" onClick={() => activate(pl)}>
-                <span>{isActive(pl) && !p.useGps ? "🏠 " : ""}{pl.name}</span>
-                <small className="muted">{fmtTravel(pl.max_travel_min)} range</small>
-              </button>
-              {!isActive(pl) && <button className="x" onClick={() => removePlace(pl.name)} aria-label="Remove">×</button>}
-            </li>
-          ))}
-        </ul>
-        <button className="btn btn-ghost wide" onClick={hereAsPlace}>📍 Save where I am now</button>
-        <div className="search">
-          <input placeholder="Search a town or suburb…" value={q} onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && search()} />
-          <button className="btn" onClick={search} disabled={busy}>{busy ? "…" : "Search"}</button>
+      <div className="group-title">Travel range</div>
+      <div className="group">
+        <div className="row" style={{ display: "block" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <p className="big">{fmtTravel(s.max_travel_min)}</p>
+            <span className="muted">{p.inRangeCount} spots</span>
+          </div>
+          <input type="range" min={0} max={RANGES.length - 1} step={1}
+            value={Math.max(0, RANGES.findIndex((r) => r >= s.max_travel_min))}
+            onChange={(e) => setRange(RANGES[Number(e.target.value)])} />
+          <div className="range-labels"><span>30 min</span><span>7 h</span></div>
         </div>
-        {hits.length > 0 && (
-          <ul className="hits">
-            {hits.map((h) => (
-              <li key={`${h.lat},${h.lon}`}>
-                <button onClick={() => {
-                  const name = h.display_name.split(",").slice(0, 2).join(",").trim();
-                  addPlace({ name, lat: Number(h.lat), lon: Number(h.lon), max_travel_min: s.max_travel_min });
-                  setHits([]); setQ("");
-                }}>{h.display_name}</button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="hint">On holiday somewhere new? Save it here, then add your spots from the Map tab.</p>
-      </section>
+      </div>
 
-      <section className="panel">
-        <h3>Scores</h3>
-        <p className="muted">{p.lastRun ? `Last updated ${ago(p.lastRun.created_at, p.now)}` : "No runs yet"}</p>
-        {p.lastRun?.problems?.length ? <p className="hint">{p.lastRun.problems.length} spots had data warnings.</p> : null}
-        <button className="btn wide" onClick={refresh}>Refresh now</button>
-        {msg && <p className="hint">{msg}</p>}
-      </section>
+      <div className="group-title">Home</div>
+      <div className="group">
+        {s.saved_places.map((pl) => (
+          <div key={pl.name} className="row">
+            <button className="row-main" style={{ border: 0, background: "none", padding: 0, textAlign: "left" }}
+              onClick={() => activate(pl)}>
+              {pl.name}<small>{fmtTravel(pl.max_travel_min)} range</small>
+            </button>
+            {isActive(pl) ? <span className="check-mark">✓</span>
+              : <button className="x" onClick={() => removePlace(pl.name)}>Remove</button>}
+          </div>
+        ))}
+        <button className="row accent" onClick={saveHere}>Add where I am now</button>
+        <div className="search">
+          <input placeholder="Add a town or suburb" value={q} onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && search()} />
+          <button className="link" onClick={search} disabled={busy}>{busy ? "…" : "Search"}</button>
+        </div>
+        {hits.map((h) => (
+          <button key={`${h.lat},${h.lon}`} className="row" onClick={() => {
+            const name = h.display_name.split(",").slice(0, 2).join(",").trim();
+            addPlace({ name, lat: Number(h.lat), lon: Number(h.lon), max_travel_min: s.max_travel_min });
+            setHits([]); setQ("");
+          }}><span className="row-main">{h.display_name}</span></button>
+        ))}
+      </div>
+      {msg && <p className="hint">{msg}</p>}
+      <p className="hint">Tap a place to fish from there. Somewhere new? Add your own spots from the Map tab.</p>
 
-      <section className="panel">
-        <button className="btn btn-ghost wide" onClick={p.onSignOut}>Sign out</button>
-        <p className="hint">{api.demo ? "Demo mode — sample data, nothing is saved to the cloud." : ""}</p>
-      </section>
+      <div className="group-title">Scores</div>
+      <div className="group">
+        <div className="row">
+          <div className="row-main">Last updated</div>
+          <span className="row-value">{p.lastRun ? ago(p.lastRun.created_at, p.now) : "never"}</span>
+        </div>
+        <button className="row accent" onClick={refresh}>Refresh now</button>
+      </div>
+      {refreshMsg && <p className="hint">{refreshMsg}</p>}
+
+      <div className="group" style={{ marginTop: 24 }}>
+        <button className="row" style={{ color: "var(--poor)", justifyContent: "center" }} onClick={p.onSignOut}>Sign out</button>
+      </div>
+      {api.demo && <p className="hint">Demo mode — sample data.</p>}
     </div>
   );
 }
