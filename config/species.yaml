@@ -1,0 +1,183 @@
+# Baseline rules — widely held SEQ / northern-NSW angling beliefs, encoded transparently.
+# Every number here is a starting belief that the learning layer must beat (Phase 4).
+# Edit freely; the scorer reads this file on every run.
+#
+# season       12 monthly values Jan..Dec, 0 (off) .. 1 (peak)
+# light        preference by light period, -1 .. 1
+# tide         preference by tide phase, -1 .. 1
+#              phases: low_slack, rising_early, rising_mid, rising_late,
+#                      high_slack, falling_early, falling_mid, falling_late
+# sst          water-temp trapezoid °C: [too_cold, ideal_low, ideal_high, too_hot] (null = not used)
+# swell_pref   none | wash (likes some whitewater/wash) | calm
+# rain_pref    likes_fresh | dislikes_fresh | neutral   (72 h rainfall response)
+# spring_pref  -1 .. 1  how much bigger (spring) tides around new/full moon help
+# base_rate    rough chance of catching >=1 on an average session (calibration start point)
+# weights      how many score points each factor can swing (+/-); missing = default
+
+defaults:
+  weights: {season: 22, light: 12, tide: 14, sst: 12, wind: 12, swell: 8,
+            rain: 6, spring: 5, pressure: 4, solunar: 3}
+
+species:
+  bream:
+    name: Yellowfin bream
+    season: [0.6, 0.6, 0.6, 0.7, 0.85, 1.0, 1.0, 0.95, 0.75, 0.6, 0.6, 0.6]
+    light: {dawn: 0.8, day: 0.1, dusk: 0.8, night: 0.6}
+    tide: {low_slack: 0.1, rising_early: 0.5, rising_mid: 0.6, rising_late: 0.7,
+           high_slack: 0.4, falling_early: 0.5, falling_mid: 0.4, falling_late: 0.2}
+    sst: [15, 18, 25, 29]
+    swell_pref: wash
+    rain_pref: dislikes_fresh
+    spring_pref: 0.4
+    base_rate: 0.6
+    notes: Year-round; winter spawning run concentrates fish at river mouths, bars and passages.
+
+  flathead:
+    name: Dusky flathead
+    season: [0.75, 0.7, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 0.95, 0.85, 0.8]
+    light: {dawn: 0.6, day: 0.4, dusk: 0.6, night: -0.3}
+    tide: {low_slack: 0.5, rising_early: 0.4, rising_mid: 0.1, rising_late: 0.0,
+           high_slack: -0.3, falling_early: 0.2, falling_mid: 0.7, falling_late: 1.0}
+    sst: [16, 19, 26, 30]
+    swell_pref: calm
+    rain_pref: dislikes_fresh
+    spring_pref: 0.4
+    base_rate: 0.45
+    notes: Ambush feeders; the last 2–3 h of the run-out drains bait off the flats into drop-offs.
+
+  tailor:
+    name: Tailor
+    season: [0.2, 0.2, 0.25, 0.4, 0.7, 0.9, 1.0, 1.0, 0.9, 0.6, 0.35, 0.25]
+    light: {dawn: 1.0, day: -0.3, dusk: 1.0, night: 0.4}
+    tide: {low_slack: 0.4, rising_early: 0.6, rising_mid: 0.7, rising_late: 0.8,
+           high_slack: 0.7, falling_early: 0.5, falling_mid: 0.4, falling_late: 0.3}
+    sst: [15, 17, 22, 25]
+    swell_pref: wash
+    rain_pref: neutral
+    spring_pref: 0.3
+    base_rate: 0.35
+    notes: Winter migration; bay fish Jun–Aug, ocean beaches and headlands peak Jul–Sep.
+           Dawn/dusk on the run-in; westerly winter weather is classic tailor weather.
+
+  trevally:
+    name: Trevally (giant / big-eye / golden)
+    season: [0.9, 1.0, 1.0, 0.85, 0.7, 0.5, 0.4, 0.4, 0.5, 0.7, 0.8, 0.9]
+    light: {dawn: 0.9, day: 0.2, dusk: 0.9, night: 0.0}
+    tide: {low_slack: 0.0, rising_early: 0.5, rising_mid: 0.8, rising_late: 0.6,
+           high_slack: 0.0, falling_early: 0.5, falling_mid: 0.8, falling_late: 0.6}
+    sst: [19, 22, 28, 31]
+    swell_pref: wash
+    rain_pref: neutral
+    spring_pref: 0.4
+    base_rate: 0.3
+    notes: Warm-water fish that hunt on moving water around walls, bars and bait schools.
+
+  jewfish:
+    name: Mulloway (jewfish)
+    season: [0.6, 0.6, 0.65, 0.75, 0.9, 1.0, 1.0, 0.95, 0.8, 0.65, 0.6, 0.6]
+    light: {dawn: 0.7, day: -0.4, dusk: 0.7, night: 1.0}
+    tide: {low_slack: 0.8, rising_early: 0.3, rising_mid: 0.2, rising_late: 0.5,
+           high_slack: 1.0, falling_early: 0.6, falling_mid: 0.2, falling_late: 0.4}
+    sst: [15, 18, 24, 28]
+    swell_pref: wash
+    rain_pref: likes_fresh
+    spring_pref: 0.8
+    base_rate: 0.15
+    notes: Night and low-light on the tide change; bigger tides around full/new moon; dirty,
+           post-rain water helps. Bigger fish concentrate in rivers through the cooler months.
+
+  kingfish:
+    name: Yellowtail kingfish
+    season: [0.3, 0.3, 0.4, 0.6, 0.8, 1.0, 1.0, 1.0, 0.85, 0.6, 0.4, 0.3]
+    light: {dawn: 1.0, day: 0.3, dusk: 0.6, night: -0.6}
+    tide: {low_slack: 0.0, rising_early: 0.5, rising_mid: 0.8, rising_late: 0.7,
+           high_slack: 0.3, falling_early: 0.5, falling_mid: 0.7, falling_late: 0.5}
+    sst: [15, 17, 22, 25]
+    swell_pref: wash
+    rain_pref: dislikes_fresh
+    spring_pref: 0.2
+    base_rate: 0.1
+    notes: Cooler-water pelagic at the exposed headlands (Point Lookout, Cape Moreton, Tweed).
+
+  spanish_mackerel:
+    name: Spanish mackerel
+    season: [0.9, 1.0, 1.0, 1.0, 0.7, 0.35, 0.15, 0.1, 0.1, 0.15, 0.35, 0.7]
+    light: {dawn: 1.0, day: 0.3, dusk: 0.7, night: -0.8}
+    tide: {low_slack: 0.0, rising_early: 0.6, rising_mid: 0.8, rising_late: 0.8,
+           high_slack: 0.4, falling_early: 0.4, falling_mid: 0.4, falling_late: 0.2}
+    sst: [21, 24, 28, 31]
+    swell_pref: calm
+    rain_pref: dislikes_fresh
+    spring_pref: 0.1
+    base_rate: 0.08
+    notes: Dec–May, best Feb–Apr once water is >23 °C. Clean blue water on the run-in; rare land-based.
+
+  sharks:
+    name: Sharks (bull / whaler)
+    season: [1.0, 1.0, 0.95, 0.8, 0.6, 0.45, 0.4, 0.4, 0.5, 0.7, 0.85, 0.95]
+    light: {dawn: 0.6, day: -0.4, dusk: 0.8, night: 1.0}
+    tide: {low_slack: 0.2, rising_early: 0.6, rising_mid: 0.7, rising_late: 0.8,
+           high_slack: 0.6, falling_early: 0.5, falling_mid: 0.4, falling_late: 0.2}
+    sst: [19, 22, 29, 32]
+    swell_pref: none
+    rain_pref: likes_fresh
+    spring_pref: 0.3
+    base_rate: 0.3
+    notes: Warm months, night and dirty water; bull sharks push up rivers after rain.
+
+  bass:
+    name: Australian bass
+    season: [0.9, 0.9, 0.85, 0.75, 0.6, 0.45, 0.4, 0.45, 0.75, 0.95, 1.0, 0.95]
+    light: {dawn: 1.0, day: -0.4, dusk: 1.0, night: 0.5}
+    tide: null
+    sst: null
+    swell_pref: none
+    rain_pref: likes_fresh
+    spring_pref: 0.0
+    base_rate: 0.45
+    weights: {season: 24, light: 18, tide: 0, sst: 0, wind: 8, swell: 0,
+              rain: 8, spring: 0, pressure: 6, solunar: 4}
+    notes: Low-light surface bite in the warmer months; a moderate rise after rain fires river fish.
+
+# Regulation flags shown alongside scores. Verify each season — rules change.
+regulations:
+  - id: qld_bass_tidal_closure
+    species: [bass]
+    state: QLD
+    applies_to: tidal
+    from: "06-01"
+    to: "08-31"
+    action: closed
+    text: QLD tidal-waters Australian bass closed season (1 Jun – 31 Aug).
+  - id: nsw_bass_river_closure
+    species: [bass]
+    state: NSW
+    applies_to: non_impoundment
+    from: "05-01"
+    to: "08-31"
+    action: catch_and_release
+    text: NSW rivers/estuaries bass & estuary perch zero bag (1 May – 31 Aug).
+  - id: qld_spanish_closure_feb
+    species: [spanish_mackerel]
+    state: QLD
+    applies_to: all
+    from: "02-01"
+    to: "02-21"
+    action: closed
+    text: QLD east coast Spanish mackerel closure south of 22°S (1–21 Feb). Verify dates.
+  - id: qld_spanish_closure_mar
+    species: [spanish_mackerel]
+    state: QLD
+    applies_to: all
+    from: "03-01"
+    to: "03-21"
+    action: closed
+    text: QLD east coast Spanish mackerel closure south of 22°S (1–21 Mar). Verify dates.
+  - id: qld_sip
+    species: [bass]
+    state: QLD
+    applies_to: permit_SIP
+    from: "01-01"
+    to: "12-31"
+    action: permit
+    text: Stocked Impoundment Permit required (18+).
