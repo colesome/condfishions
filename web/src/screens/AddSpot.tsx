@@ -50,10 +50,12 @@ export function AddSpot({ lat, lon, species, onClose, onSaved }: Props) {
 
   return (
     <div className="sheet">
-      <div className="sheet-head">
-        <button className="back" onClick={onClose} aria-label="Back">‹</button>
-        <div><h2>New spot</h2><small className="muted">{lat.toFixed(4)}, {lon.toFixed(4)}</small></div>
+      <div className="navbar">
+        <button className="back" onClick={onClose}><span>‹</span>Cancel</button>
+        <button className="link" onClick={save} style={{ fontWeight: 600 }}>Save</button>
       </div>
+      <h1>New spot</h1>
+      <p className="sub">{lat.toFixed(4)}, {lon.toFixed(4)}</p>
       <div className="form">
         <label>Name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Caravan park rock wall" /></label>
         <label>Type

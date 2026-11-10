@@ -3,7 +3,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 OUT = Path(__file__).resolve().parent.parent / "public" / "icons"
-BG, TEAL, FISH = (11, 22, 32), (95, 179, 201), (232, 240, 244)
+BG, TEAL, FISH = (0, 122, 255), (170, 210, 255), (255, 255, 255)
 
 
 def draw(size: int, pad_frac: float = 0.0) -> Image.Image:
@@ -19,7 +19,7 @@ def draw(size: int, pad_frac: float = 0.0) -> Image.Image:
         for x in range(0, 1025, 16):
             import math
             pts.append((X(x), X(y + 26 * math.sin((x / 1024) * 2 * math.pi * 2 + i))))
-        d.line(pts, fill=TEAL if i == 0 else (60, 120, 140), width=int(30 * k))
+        d.line(pts, fill=TEAL if i == 0 else (90, 160, 255), width=int(30 * k))
     # fish body + tail + eye
     d.ellipse([X(250), X(330), X(700), X(560)], fill=FISH)
     d.polygon([(X(690), X(445)), (X(840), X(330)), (X(840), X(560))], fill=FISH)

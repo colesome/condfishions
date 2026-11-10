@@ -53,10 +53,13 @@ the species' `base_rate`. Phase 4 recalibrates this from your real sessions.
 An installable web app (PWA) hosted free on GitHub Pages. You add it to your iPhone home
 screen and it opens full-screen like any other app. Only your login can see data.
 
-- **Fish:** spots ranked by their best 3-hour window (next 6 h, today, tonight, tomorrow, weekend,
-  3 days), with the species likely there and why. Saltwater by default, with a Freshwater toggle.
+- **Fish:** spots ranked by their best 3-hour window, with the date and time, how far away, the
+  species likely there and why. One ranking: conditions first, with closer spots winning a close
+  call. Saltwater by default, Freshwater toggle.
 - **Spot page:** a 7-day strip of 3-hour scores. Tap a block for each species' score, chance and
   reasons, plus wind, sea, tide, water temp and rain. Directions link.
+- **Location:** if "Use my current location" fails on iPhone, allow it under Settings → Privacy &
+  Security → Location Services → Safari Websites → *While Using the App*.
 - **Map:** spots coloured by score; out-of-range spots greyed. **＋ Add a spot** lets you tap a
   location and describe it (type, which way you cast, exposure, species). Scored from the next run.
 - **Places:** change home and travel range (30 min – 7 h), save places (Home, Holiday…),
@@ -67,7 +70,7 @@ screen and it opens full-screen like any other app. Only your login can see data
 ## Setup (one-off, about 20 minutes)
 
 1. **Supabase:** create a free project. In the SQL editor run
-   `supabase/migrations/0001_init.sql`, then `0002_places_user_spots.sql`, then `0003_spot_windows.sql`.
+   `0001_init.sql`, `0002_places_user_spots.sql` and `0003_spot_windows.sql` from `supabase/migrations/`, in that order.
    Create your user under *Authentication → Users*, then **turn off sign-ups**.
 2. **GitHub secrets** (*Settings → Secrets and variables → Actions*):
    - `SUPABASE_URL`
@@ -78,10 +81,10 @@ screen and it opens full-screen like any other app. Only your login can see data
    Run *Score fishing conditions* once by hand (tick *archive*).
 5. **iPhone:** open the URL in Safari → Share → **Add to Home Screen** → open it from the
    icon and sign in.
-6. *(Optional, for "Refresh now")* create a fine-grained GitHub token for this repo only with
-   *Actions: read and write*. Then run
-   `npx supabase functions deploy rescore --project-ref <ref>` and set the function secrets
-   `GH_TOKEN` and `GH_REPO=colesome/condfishions`.
+6. *(Optional) "Refresh now" button:* run `supabase/migrations/0004_refresh_button.sql` in the
+   SQL editor. Then create a GitHub fine-grained token (*Settings → Developer settings →
+   Fine-grained tokens*; only this repo; permission *Actions: Read and write*) and store it by
+   running `select vault.create_secret('<your token>', 'github_token');` in the SQL editor.
 
 The scheduled scoring runs four times a day, which also keeps the free Supabase project from
 pausing.

@@ -20,7 +20,7 @@ export interface Api {
   addSpot(s: Spot): Promise<void>;
   deleteSpot(id: string): Promise<void>;
   lastRun(): Promise<Run | null>;
-  rescore(): Promise<boolean>;
+  rescore(): Promise<"requested" | "not_configured" | "error">;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -74,8 +74,9 @@ class SupabaseApi implements Api {
     return rows[0] ?? null;
   }
   async rescore() {
-    const { error } = await this.sb.functions.invoke("rescore", { body: {} });
-    return !error;
+    const { data, error } = await this.sb.rpc("request_rescore");
+    if (error) return error.message.includes("request_rescore") ? "not_configured" as const : "error" as const;
+    return data === "requested" ? "requested" as const : "not_configured" as const;
   }
 }
 
@@ -120,7 +121,7 @@ class DemoApi implements Api {
   async addSpot(s: Spot) { localStorage.setItem("demo_spots", JSON.stringify([...this.userSpots(), { ...s, source: "user" }])); }
   async deleteSpot(id: string) { localStorage.setItem("demo_spots", JSON.stringify(this.userSpots().filter((s) => s.id !== id))); }
   async lastRun() { return { run_id: "demo", created_at: this.nowTs.toISOString(), n_scores: 0, problems: [] }; }
-  async rescore() { return false; }
+  async rescore() { return "not_configured" as const; }
 }
 
 /** Set when a production build is missing its Supabase settings (instead of silently using demo data). */

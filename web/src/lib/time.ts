@@ -70,3 +70,22 @@ export function ago(iso: string, now = new Date()): string {
   const h = Math.round(m / 60);
   return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
 }
+
+function hShort(d: Date): string {
+  const h = d.getHours();
+  if (h === 0 && d.getMinutes() === 0) return "midnight";
+  if (h === 12 && d.getMinutes() === 0) return "midday";
+  return hm(d);
+}
+
+/** "Today, Wed 11 Nov · 6am – 9am" — always shows the date so it's unambiguous. */
+export function fmtWhen(iso: string, hours = 3, now = new Date()): string {
+  const d = new Date(iso);
+  const end = new Date(d.getTime() + hours * H);
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const date = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1);
+  const rel = sameDay(d, now) ? "Today, " : sameDay(d, tomorrow) ? "Tomorrow, " : "";
+  return `${rel}${date} · ${hShort(d)} – ${hShort(end)}`;
+}

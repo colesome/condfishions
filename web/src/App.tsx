@@ -8,7 +8,9 @@ import { Login } from "./screens/Login";
 import { MapScreen } from "./screens/MapScreen";
 import { Places } from "./screens/Places";
 import { SpotSheet } from "./screens/SpotSheet";
-import { Suggest, type SortBy } from "./screens/Suggest";
+import { Suggest } from "./screens/Suggest";
+import { IconFish, IconMap, IconPin } from "./components/icons";
+import { getPosition } from "./lib/geo";
 
 type Tab = "suggest" | "map" | "places";
 
@@ -29,7 +31,6 @@ export default function App() {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [windowId, setWindowId] = useState<WindowId>(ls.get("windowId", "today"));
   const [water, setWater] = useState<Water>(ls.get("water", "salt"));
-  const [sortBy, setSortBy] = useState<SortBy>(ls.get("sortBy", "score"));
   const [results, setResults] = useState<SpotWindow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,12 +57,9 @@ export default function App() {
   const setUseGps = (v: boolean) => { setUseGpsState(v); ls.set("useGps", v); };
   useEffect(() => {
     if (!useGps) { setGps(null); return; }
-    if (!("geolocation" in navigator)) { setGpsError("Location isn't available on this device."); return; }
-    navigator.geolocation.getCurrentPosition(
-      (p) => { setGps({ lat: p.coords.latitude, lon: p.coords.longitude }); setGpsError(null); },
-      () => setGpsError("Couldn't get your location — using your saved place instead."),
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60_000 },
-    );
+    getPosition()
+      .then((g) => { setGps(g); setGpsError(null); })
+      .catch((e: Error) => setGpsError(`${e.message} Using your saved place for now.`));
   }, [useGps]);
 
   const origin: Origin | null = settings && (gps
@@ -83,7 +81,7 @@ export default function App() {
 
   useEffect(() => {
     if (!authed || !origin) return;
-    ls.set("windowId", windowId); ls.set("water", water); ls.set("sortBy", sortBy);
+    ls.set("windowId", windowId); ls.set("water", water);
     const ids = [...travel.keys()];
     const key = `res2|${windowId}|${water}|${ids.length}|${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
     if (!ids.length) { setResults([]); return; }
@@ -98,7 +96,7 @@ export default function App() {
         if (cached) { setResults(cached); setStale(true); } else setError(String(e.message ?? e));
       })
       .finally(() => setLoading(false));
-  }, [authed, travel, windowId, sortBy]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authed, travel, windowId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSettings = async (s: Settings) => {
     setSettings(s);
@@ -120,7 +118,6 @@ export default function App() {
           <Suggest origin={origin} now={now} spots={spotMap} species={species} travel={travel}
             results={results} loading={loading} error={error} stale={stale}
             windowId={windowId} setWindowId={setWindowId} water={water} setWater={setWater}
-            sortBy={sortBy} setSortBy={setSortBy}
             openSpot={(id) => setOpenSpot(id)} openPlaces={() => setTab("places")} />
         )}
         {tab === "map" && (
@@ -135,9 +132,9 @@ export default function App() {
       </main>
 
       <nav className="tabs">
-        <button className={tab === "suggest" ? "on" : ""} onClick={() => setTab("suggest")}><span>🎣</span>Fish</button>
-        <button className={tab === "map" ? "on" : ""} onClick={() => setTab("map")}><span>🗺️</span>Map</button>
-        <button className={tab === "places" ? "on" : ""} onClick={() => setTab("places")}><span>🏠</span>Places</button>
+        <button className={tab === "suggest" ? "on" : ""} onClick={() => setTab("suggest")}><IconFish />Fish</button>
+        <button className={tab === "map" ? "on" : ""} onClick={() => setTab("map")}><IconMap />Map</button>
+        <button className={tab === "places" ? "on" : ""} onClick={() => setTab("places")}><IconPin />Places</button>
       </nav>
 
       {sheetSpot && (

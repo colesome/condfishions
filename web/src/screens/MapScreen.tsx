@@ -13,11 +13,11 @@ interface Props {
 }
 
 function colour(score: number | undefined): string {
-  if (score === undefined) return "#5b6b78";
-  if (score >= 75) return "#2ecc8f";
-  if (score >= 60) return "#9bd25b";
-  if (score >= 45) return "#e8b84a";
-  return "#e0664f";
+  if (score === undefined) return "#aeaeb2";
+  if (score >= 75) return "#34c759";
+  if (score >= 60) return "#8fcf4a";
+  if (score >= 45) return "#ff9f0a";
+  return "#ff453a";
 }
 
 function ClickToAdd({ armed, onPick }: { armed: boolean; onPick: (lat: number, lon: number) => void }) {
@@ -39,9 +39,9 @@ export function MapScreen({ origin, spots, travel, results, openSpot, addSpotAt 
         <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' />
         <Circle center={[origin.lat, origin.lon]} radius={radiusM}
-          pathOptions={{ color: "#5fb3c9", weight: 1, fillOpacity: 0.04, dashArray: "4 6" }} />
+          pathOptions={{ color: "#007aff", weight: 1, fillOpacity: 0.04, dashArray: "4 6" }} />
         <CircleMarker center={[origin.lat, origin.lon]} radius={7}
-          pathOptions={{ color: "#fff", weight: 2, fillColor: "#5fb3c9", fillOpacity: 1 }}>
+          pathOptions={{ color: "#fff", weight: 2, fillColor: "#007aff", fillOpacity: 1 }}>
           <Tooltip>{origin.name}</Tooltip>
         </CircleMarker>
         {spots.map((s) => {
@@ -50,8 +50,8 @@ export function MapScreen({ origin, spots, travel, results, openSpot, addSpotAt 
           return (
             <CircleMarker key={s.id} center={[s.lat, s.lon]} radius={inRange ? 9 : 5}
               eventHandlers={{ click: () => !armed && openSpot(s.id) }}
-              pathOptions={{ color: "#0b1620", weight: 1.5, fillColor: inRange ? colour(sc) : "#3a4752",
-                fillOpacity: inRange ? 0.95 : 0.6 }}>
+              pathOptions={{ color: "#ffffff", weight: 1.5, fillColor: inRange ? colour(sc) : "#c7c7cc",
+                fillOpacity: inRange ? 1 : 0.8 }}>
               <Tooltip direction="top">{s.name}{sc !== undefined ? ` · ${Math.round(sc)}` : ""}</Tooltip>
             </CircleMarker>
           );
@@ -61,14 +61,14 @@ export function MapScreen({ origin, spots, travel, results, openSpot, addSpotAt 
       <div className="map-ui">
         {armed
           ? <div className="map-hint">Tap the water's edge where you'll fish <button onClick={() => setArmed(false)}>Cancel</button></div>
-          : <button className="btn fab" onClick={() => setArmed(true)}>＋ Add a spot</button>}
+          : <button className="btn fab" onClick={() => setArmed(true)}>Add spot</button>}
       </div>
       <div className="legend">
-        <span><i style={{ background: "#2ecc8f" }} />75+</span>
-        <span><i style={{ background: "#9bd25b" }} />60</span>
-        <span><i style={{ background: "#e8b84a" }} />45</span>
-        <span><i style={{ background: "#e0664f" }} />&lt;45</span>
-        <span><i style={{ background: "#3a4752" }} />out of range</span>
+        <span><i style={{ background: "#34c759" }} />75+</span>
+        <span><i style={{ background: "#8fcf4a" }} />60</span>
+        <span><i style={{ background: "#ff9f0a" }} />45</span>
+        <span><i style={{ background: "#ff453a" }} />&lt;45</span>
+        <span><i style={{ background: "#c7c7cc" }} />out of range</span>
       </div>
     </div>
   );
