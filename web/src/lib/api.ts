@@ -27,6 +27,13 @@ export interface Api {
   upsert(table: string, row: Record<string, unknown>): Promise<void>;
   update(table: string, id: string, patch: Record<string, unknown>): Promise<void>;
   uploadPhoto(path: string, blob: Blob): Promise<void>;
+  addSpecies(name: string): Promise<Species>;
+  deleteTrip(id: string): Promise<void>;
+}
+
+export function speciesFromName(name: string): Species {
+  const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+  return { id: `user_${slug}`, name: name.trim().replace(/\b\w/g, (c) => c.toUpperCase()), base_rate: 0.3, notes: null };
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -117,6 +124,19 @@ class SupabaseApi implements Api {
   async update(table: string, id: string, patch: Record<string, unknown>) {
     await this.q(this.sb.from(table).update(patch).eq("id", id));
   }
+  async addSpecies(name: string) {
+    const sp = speciesFromName(name);
+    await this.q(this.sb.from("species").upsert({ ...sp, rules: {}, source: "user" }, { onConflict: "id", ignoreDuplicates: true }));
+    return sp;
+  }
+  async deleteTrip(id: string) {
+    const photos = await this.q<{ storage_path: string }[]>(this.sb.from("photos").select("storage_path").eq("session_id", id));
+    if (photos.length) {
+      const { error } = await this.sb.storage.from("photos").remove(photos.map((p) => p.storage_path));
+      if (error) throw new Error(error.message);
+    }
+    await this.q(this.sb.from("sessions").delete().eq("id", id));
+  }
   async uploadPhoto(path: string, blob: Blob) {
     const { error } = await this.sb.storage.from("photos").upload(path, blob, { upsert: true, contentType: "image/jpeg" });
     if (error) throw new Error(error.message);
@@ -142,7 +162,7 @@ class DemoApi implements Api {
   }
   private userSpots(): Spot[] { return JSON.parse(localStorage.getItem("demo_spots") ?? "[]"); }
   async spots() { return [...(await this.load<Spot[]>("spots")), ...this.userSpots()]; }
-  async species() { return this.load<Species[]>("species"); }
+  async species() { return [...(await this.load<Species[]>("species")), ...this.table<Species>("species")]; }
   async settings() {
     const s = localStorage.getItem("demo_settings");
     return s ? (JSON.parse(s) as Settings) : DEFAULT_SETTINGS;
@@ -200,6 +220,17 @@ class DemoApi implements Api {
     await this.upsert(table, { id, ...patch });
   }
   async uploadPhoto() { /* blobs stay in IndexedDB in demo mode */ }
+  async addSpecies(name: string) {
+    const sp = speciesFromName(name);
+    if (!this.table<Species>("species").some((s) => s.id === sp.id)) await this.upsert("species", { ...sp });
+    return sp;
+  }
+  async deleteTrip(id: string) {
+    for (const t of ["sessions", "catches", "photos", "observed_conditions"]) {
+      const key = t === "sessions" ? "id" : "session_id";
+      localStorage.setItem(`demo_db_${t}`, JSON.stringify(this.table<Record<string, unknown>>(t).filter((r) => r[key] !== id)));
+    }
+  }
 }
 
 const URL_ = globalThis.URL;

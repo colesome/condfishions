@@ -141,7 +141,8 @@ export default function App() {
         )}
         {tab === "trips" && (
           <Trips active={active} setActive={setActive} spots={spotMap} species={species} pending={pending}
-            openSpot={(id) => setOpenSpot({ id })} />
+            openSpot={(id) => setOpenSpot({ id })}
+            onSpeciesAdded={(sp) => setSpecies((xs) => xs.some((x) => x.id === sp.id) ? xs : [...xs, sp])} />
         )}
         {tab === "places" && (
           <Places settings={settings} saveSettings={saveSettings} useGps={useGps} setUseGps={setUseGps}

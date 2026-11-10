@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a84ff"/><stop offset="1" stop-color="#00c2a8"/></linearGradient></defs>
+  <rect width="1024" height="1024" fill="url(#g)"/>
+  <!-- hook shaped like a C -->
+  <path d="M600 210 L600 250 M600 250 C600 250 430 250 380 420 C340 560 420 690 560 690 C660 690 720 620 720 540" fill="none" stroke="#fff" stroke-width="70" stroke-linecap="round"/>
+  <path d="M720 540 L660 600" fill="none" stroke="#fff" stroke-width="58" stroke-linecap="round"/>
+  <circle cx="600" cy="190" r="42" fill="none" stroke="#fff" stroke-width="30"/>
+  <path d="M120 820 C220 760 320 760 420 820 C520 880 620 880 720 820 C800 772 860 772 910 800" fill="none" stroke="#ffffff" stroke-opacity=".85" stroke-width="44" stroke-linecap="round"/>
+</svg>
