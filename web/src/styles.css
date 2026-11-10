@@ -273,3 +273,24 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .sheet-map .map { height: 100vh; }
 .map-back { position: absolute; top: calc(env(safe-area-inset-top) + 10px); left: 12px; z-index: 600; background: var(--card); border-radius: 12px; padding: 6px 10px; box-shadow: 0 2px 12px rgba(0,0,0,.15); }
 .sheet-map .map-ui { top: calc(env(safe-area-inset-top) + 10px); }
+
+/* ── v4: brand, swipe delete, species pop-up ───────────────────────────── */
+h1.brand { font-size: 28px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
+h1.brand span { background: linear-gradient(90deg, #007aff, #00b386); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.swipe { position: relative; overflow: hidden; border-top: .5px solid var(--line); }
+.swipe:first-child { border-top: 0; }
+.swipe-delete { position: absolute; top: 0; right: 0; bottom: 0; border: 0; background: var(--poor); color: #fff; font-weight: 600; font-size: 15px; }
+.swipe-front { background: var(--card); border-top: 0 !important; position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.pick-other { color: var(--accent); background: #e8f1ff; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1400; display: flex; align-items: flex-end; justify-content: center; animation: fade .15s; }
+@keyframes fade { from { opacity: 0; } }
+.modal { background: var(--bg); width: 100%; max-width: 520px; border-radius: 20px 20px 0 0; padding: 18px 16px calc(env(safe-area-inset-bottom) + 16px); display: flex; flex-direction: column; gap: 12px; animation: slideup .2s ease-out; }
+@keyframes slideup { from { transform: translateY(40px); opacity: .5; } }
+.modal h2 { font-size: 20px; }
+.modal-input { border: 0; background: var(--card); border-radius: 12px; padding: 13px 14px; font-size: 17px; }
+.modal-list { background: var(--card); border-radius: 14px; overflow: hidden; max-height: 40vh; overflow-y: auto; }
+.modal-list:empty { display: none; }
+.modal .link { align-self: center; padding: 6px; }
+h1.brand { font-size: 26px; }
+.title-actions .from { white-space: nowrap; font-size: 14px; }
+.title-actions { gap: 8px; }

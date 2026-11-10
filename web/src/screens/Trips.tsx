@@ -16,16 +16,31 @@ interface TripsProps {
   species: Species[];
   pending: number;
   openSpot: (id: string) => void;
+  onSpeciesAdded: (sp: Species) => void;
 }
 
-export function Trips({ active, setActive, spots, species, pending, openSpot }: TripsProps) {
+export function Trips({ active, setActive, spots, species, pending, openSpot, onSpeciesAdded }: TripsProps) {
   const [history, setHistory] = useState<TripSummary[] | null>(null);
   const [catching, setCatching] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const spName = (id: string) => shortName(species.find((s) => s.id === id), id);
 
-  useEffect(() => { api.trips().then(setHistory).catch(() => setHistory([])); }, [active]);
+  const reload = () => api.trips().then(setHistory).catch(() => setHistory([]));
+  useEffect(() => { void reload(); }, [active]);
+
+  async function deleteTrip(id: string) {
+    if (!confirm("Delete this trip and its photos? This can't be undone.")) return false;
+    try {
+      await api.deleteTrip(id);
+      setHistory((h) => (h ?? []).filter((t) => t.id !== id));
+      setToast("Trip deleted");
+      return true;
+    } catch (e) {
+      alert(`Couldn't delete — are you online? (${(e as Error).message})`);
+      return false;
+    }
+  }
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 2600); return () => clearTimeout(t); } }, [toast]);
 
   const spot = active ? spots.get(active.trip.spot_id) : undefined;
@@ -75,6 +90,7 @@ export function Trips({ active, setActive, spots, species, pending, openSpot }: 
       <div className="group-title">History</div>
       {history === null && <div className="empty">Loading…</div>}
       {history && history.filter((t) => t.end_ts).length === 0 && <p className="hint">Your finished trips will show here.</p>}
+      {history && history.filter((t) => t.end_ts).length > 0 && <p className="hint">Swipe a trip left to delete it.</p>}
       {history && history.filter((t) => t.end_ts).length > 0 && (
         <div className="group">
           {history.filter((t) => t.end_ts).map((t) => {
@@ -82,7 +98,7 @@ export function Trips({ active, setActive, spots, species, pending, openSpot }: 
             const sp = [...new Set(t.catches.filter((c) => c.count > 0).map((c) => spName(c.species_id)))];
             const band = t.score_shown != null ? bandFor(Number(t.score_shown)) : null;
             return (
-              <button key={t.id} className="row" onClick={() => openSpot(t.spot_id)}>
+              <SwipeRow key={t.id} onOpen={() => openSpot(t.spot_id)} onDelete={() => deleteTrip(t.id)}>
                 <span className="trip-fish">{fish > 0 ? "🐟" : "🫙"}</span>
                 <span className="row-main">
                   {spots.get(t.spot_id)?.name ?? t.spot_id}
@@ -90,7 +106,7 @@ export function Trips({ active, setActive, spots, species, pending, openSpot }: 
                     {" · "}{fish > 0 ? `${fish} fish${sp.length ? ` (${sp.join(", ")})` : ""}` : "no fish"}</small>
                 </span>
                 {band && <span className="score-chip" style={{ background: band.soft, color: band.color }}>{Math.round(Number(t.score_shown))}</span>}
-              </button>
+              </SwipeRow>
             );
           })}
         </div>
@@ -98,6 +114,8 @@ export function Trips({ active, setActive, spots, species, pending, openSpot }: 
 
       {catching && active && spot && (
         <CatchSheet spot={spot} species={species} onClose={() => setCatching(false)}
+          caughtHere={[...new Set((history ?? []).filter((t) => t.spot_id === spot.id).flatMap((t) => t.catches.filter((c) => c.count > 0).map((c) => c.species_id)))]}
+          onSpeciesAdded={onSpeciesAdded}
           onSave={async (c) => {
             setActive(await logCatch(active, c));
             setCatching(false);
@@ -135,21 +153,23 @@ function Thumb({ photoKey }: { photoKey: string | null }) {
 }
 
 // ── Log a catch ───────────────────────────────────────────────────────────────
-function CatchSheet({ spot, species, onClose, onSave }: {
-  spot: Spot; species: Species[]; onClose: () => void;
+function CatchSheet({ spot, species, caughtHere, onSpeciesAdded, onClose, onSave }: {
+  spot: Spot; species: Species[]; caughtHere: string[]; onSpeciesAdded: (sp: Species) => void; onClose: () => void;
   onSave: (c: { species_id: string; length: number | null; released: boolean; photo: Blob | null }) => Promise<void>;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [sp, setSp] = useState<string>(spot.species[0]);
-  const [showAll, setShowAll] = useState(false);
+  const [extra, setExtra] = useState<string[]>([]);
+  const [asking, setAsking] = useState(false);
   const [length, setLength] = useState("");
   const [released, setReleased] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const spName = (id: string) => shortName(species.find((s) => s.id === id), id);
-  const choices = showAll ? species.map((s) => s.id) : spot.species;
+  const choices = [...new Set([...spot.species, ...caughtHere, ...extra])];
+  const nameOf = (id: string) => species.find((s) => s.id === id)?.name ?? spName(id);
 
   async function pick(f: File | undefined) {
     if (!f) return;
@@ -180,9 +200,9 @@ function CatchSheet({ spot, species, onClose, onSave }: {
       <div className="group-title">Species</div>
       <div className="pick-grid">
         {choices.map((id) => (
-          <button key={id} className={`pick ${sp === id ? "pick-on" : ""}`} onClick={() => setSp(id)}>{spName(id)}</button>
+          <button key={id} className={`pick ${sp === id ? "pick-on" : ""}`} onClick={() => setSp(id)}>{id.startsWith("user_") ? nameOf(id) : spName(id)}</button>
         ))}
-        {!showAll && <button className="pick" onClick={() => setShowAll(true)}>Other…</button>}
+        <button className="pick pick-other" onClick={() => setAsking(true)}>＋ Other…</button>
       </div>
 
       <div className="group-title">Details</div>
@@ -205,6 +225,85 @@ function CatchSheet({ spot, species, onClose, onSave }: {
         onClick={async () => { setBusy(true); await onSave({ species_id: sp, length: length ? Number(length) : null, released, photo }); }}>
         Save catch
       </button>
+      {asking && (
+        <SpeciesPrompt species={species} exclude={choices} onClose={() => setAsking(false)}
+          onPick={async (picked) => {
+            setAsking(false);
+            setErr(null);
+            try {
+              const s = typeof picked === "string" ? await api.addSpecies(picked) : picked;
+              if (typeof picked === "string") onSpeciesAdded(s);
+              setExtra((x) => [...new Set([...x, s.id])]);
+              setSp(s.id);
+            } catch (e) {
+              setErr(`Couldn't add that species — are you online? (${(e as Error).message})`);
+            }
+          }} />
+      )}
+    </div>
+  );
+}
+
+/** "What did you catch?" pop-up: pick a known species or type a new one. */
+function SpeciesPrompt({ species, exclude, onPick, onClose }: {
+  species: Species[]; exclude: string[]; onPick: (s: Species | string) => void; onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  const term = q.trim().toLowerCase();
+  const matches = species
+    .filter((s) => !exclude.includes(s.id))
+    .filter((s) => !term || s.name.toLowerCase().includes(term))
+    .slice(0, 8);
+  const exact = species.some((s) => s.name.toLowerCase() === term);
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>What did you catch?</h2>
+        <input ref={inputRef} className="modal-input" placeholder="e.g. Whiting, Mangrove jack" value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && term) onPick(matches[0] && !exact && matches.length === 1 ? matches[0] : (species.find((s) => s.name.toLowerCase() === term) ?? q)); }} />
+        <div className="modal-list">
+          {matches.map((s) => <button key={s.id} className="row" onClick={() => onPick(s)}>{s.name}</button>)}
+          {term && !exact && <button className="row accent" onClick={() => onPick(q)}>＋ Add “{q.trim()}”</button>}
+        </div>
+        <button className="link" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/** List row you can swipe left to reveal Delete (tap still opens). */
+function SwipeRow({ children, onOpen, onDelete }: { children: React.ReactNode; onOpen: () => void; onDelete: () => Promise<boolean> }) {
+  const [dx, setDx] = useState(0);
+  const [open, setOpen] = useState(false);
+  const start = useRef<{ x: number; y: number; base: number } | null>(null);
+  const moved = useRef(false);
+  const W = 92;
+  return (
+    <div className="swipe">
+      <button className="swipe-delete" style={{ width: W }} onClick={async () => { if (!(await onDelete())) { setDx(0); setOpen(false); } }}>Delete</button>
+      <div className="row swipe-front" style={{ transform: `translateX(${dx}px)`, transition: start.current ? "none" : "transform .2s" }}
+        onPointerDown={(e) => { start.current = { x: e.clientX, y: e.clientY, base: open ? -W : 0 }; moved.current = false; }}
+        onPointerMove={(e) => {
+          if (!start.current) return;
+          const ddx = e.clientX - start.current.x;
+          if (!moved.current && Math.abs(ddx) < 8) return;
+          if (!moved.current && Math.abs(e.clientY - start.current.y) > Math.abs(ddx)) { start.current = null; return; }
+          moved.current = true;
+          setDx(Math.max(-W - 30, Math.min(0, start.current.base + ddx)));
+        }}
+        onPointerUp={() => {
+          if (!start.current) return;
+          start.current = null;
+          if (!moved.current) { if (open) { setDx(0); setOpen(false); } else onOpen(); return; }
+          const o = dx < -W / 2;
+          setOpen(o); setDx(o ? -W : 0);
+        }}
+        onPointerCancel={() => { start.current = null; setDx(open ? -W : 0); }}>
+        {children}
+      </div>
     </div>
   );
 }

@@ -42,7 +42,7 @@ export function Suggest(p: Props) {
   return (
     <div className="screen">
       <div className="title-row">
-        <h1>Fish</h1>
+        <h1 className="brand">Cond<span>Fishions</span></h1>
         <div className="title-actions">
           <button className="pill-btn" onClick={p.openMap}>Map</button>
           <button className="from" onClick={p.openPlaces}>

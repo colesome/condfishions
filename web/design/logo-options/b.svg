@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#0891b2"/></linearGradient></defs>
+  <rect width="1024" height="1024" fill="url(#g)"/>
+  <!-- fish whose body is a C -->
+  <path d="M640 330 C560 250 360 250 280 400 C220 520 300 700 470 720 C560 730 620 700 660 660" fill="none" stroke="#fff" stroke-width="96" stroke-linecap="round"/>
+  <path d="M640 512 L860 380 L860 650 Z" fill="#fff"/>
+  <circle cx="400" cy="440" r="34" fill="#fff"/>
+  <circle cx="760" cy="230" r="26" fill="#fff" opacity=".75"/><circle cx="820" cy="160" r="16" fill="#fff" opacity=".6"/>
+</svg>

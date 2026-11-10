@@ -70,7 +70,8 @@ full-screen like any app. Only your login can see data. Three tabs:
 - **Trips** — the trip in progress: **Log a catch** (photo, species, length, kept/released) or
   **Finish — caught nothing**, then a 30-second review pre-filled from the forecast
   (wind, wind direction, sea, water clarity, bait, method, stars, notes). Works offline — logs
-  queue on the phone and upload when you're back in signal. History of finished trips below.
+  queue on the phone and upload when you're back in signal. History of finished trips below — swipe a trip left to delete it and its photos.
+  When logging a catch, **＋ Other…** lets you type any species; it's added to your list.
 - **Settings** — home, saved places, travel range, use-my-location, refresh.
 
 Every trip stores the rating the app showed *before* you fished, your observations, and (overnight)
