@@ -169,3 +169,17 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .login { max-width: 360px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 60px) 24px; display: flex; flex-direction: column; gap: 12px; align-items: stretch; text-align: center; }
 .login img { align-self: center; border-radius: 20px; }
 .login input { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+
+/* spot-first */
+.seg-full { display: flex; width: 100%; margin: 2px 0 6px; }
+.seg-full button { flex: 1; padding: 9px 10px; font-size: 14px; }
+.species-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 6px; }
+.sp-pill { font-size: 12px; padding: 2px 7px; border-radius: 999px; color: #071a12; }
+.sp-pill b { font-variant-numeric: tabular-nums; }
+.sp-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.sp-list li { padding: 7px 0; border-top: 1px solid var(--line); }
+.sp-line { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.sp-line .muted { margin-left: auto; font-size: 12px; }
+.sp-line .num { font-variant-numeric: tabular-nums; width: 26px; text-align: right; }
+.sp-list small { display: block; margin-top: 2px; line-height: 1.35; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }

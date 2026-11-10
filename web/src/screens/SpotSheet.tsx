@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Chip, Flags, Reasons, ScoreBadge, pct, scoreClass } from "../components/ui";
+import { ScoreBadge, pct, scoreClass } from "../components/ui";
+import { toBlocks } from "../lib/aggregate";
 import { api } from "../lib/api";
 import { hm, sameDay } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
 import type { Score, Species, Spot } from "../lib/types";
+import { shortName } from "./Suggest";
 
 interface Props {
   spot: Spot;
   species: Species[];
-  initialSpecies?: string;
   travelMin: number;
   now: Date;
   onClose: () => void;
@@ -20,10 +21,9 @@ const TYPE_LABEL: Record<string, string> = {
   fresh_dam: "Dam", fresh_river: "River",
 };
 
-export function SpotSheet({ spot, species, initialSpecies, travelMin, now, onClose, onDeleted }: Props) {
+export function SpotSheet({ spot, species, travelMin, now, onClose, onDeleted }: Props) {
   const [rows, setRows] = useState<Score[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [sel, setSel] = useState<string>(initialSpecies ?? spot.species[0]);
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,18 +32,24 @@ export function SpotSheet({ spot, species, initialSpecies, travelMin, now, onClo
   }, [spot.id, now]);
 
   const days = useMemo(() => {
-    const mine = (rows ?? []).filter((r) => r.species_id === sel);
-    const out: { day: Date; blocks: Score[] }[] = [];
-    for (const r of mine) {
-      const d = new Date(r.block_start);
+    const out: { day: Date; blocks: ReturnType<typeof toBlocks> }[] = [];
+    for (const b of toBlocks(rows ?? [])) {
+      const d = new Date(b.block_start);
       const last = out[out.length - 1];
-      if (last && sameDay(last.day, d)) last.blocks.push(r);
-      else out.push({ day: d, blocks: [r] });
+      if (last && sameDay(last.day, d)) last.blocks.push(b);
+      else out.push({ day: d, blocks: [b] });
     }
     return out;
-  }, [rows, sel]);
+  }, [rows]);
 
-  const spName = (id: string) => species.find((s) => s.id === id)?.name ?? id;
+  useEffect(() => { // open the best upcoming block by default
+    if (open || !days.length) return;
+    const all = days.flatMap((d) => d.blocks).filter((b) => !b.no_go).slice(0, 8);
+    const best = all.sort((a, b) => b.top_score - a.top_score)[0];
+    if (best) setOpen(best.block_start);
+  }, [days, open]);
+
+  const spName = (id: string) => shortName(species.find((s) => s.id === id), id);
   const directions = `https://maps.apple.com/?daddr=${spot.lat},${spot.lon}&dirflg=d`;
 
   async function del() {
@@ -69,13 +75,8 @@ export function SpotSheet({ spot, species, initialSpecies, travelMin, now, onClo
         <a className="btn" href={directions} target="_blank" rel="noreferrer">Directions</a>
         {spot.source === "user" && <button className="btn btn-ghost" onClick={del}>Delete spot</button>}
       </div>
+      <p className="hint">Common here: {spot.species.map(spName).join(", ")}</p>
       {!spot.verified && <p className="hint">Pin location is approximate — check it when you're there.</p>}
-
-      <div className="chips">
-        {spot.species.map((id) => (
-          <Chip key={id} active={sel === id} onClick={() => setSel(id)}>{spName(id)}</Chip>
-        ))}
-      </div>
 
       {err && <div className="banner banner-err">{err}</div>}
       {!rows && !err && <div className="empty">Loading…</div>}
@@ -89,23 +90,47 @@ export function SpotSheet({ spot, species, initialSpecies, travelMin, now, onClo
           <div className="strip">
             {blocks.map((b) => (
               <button key={b.block_start}
-                className={`blk ${b.safety === "no_go" ? "blk-nogo" : scoreClass(b.score)} ${open === b.block_start ? "blk-open" : ""}`}
+                className={`blk ${b.no_go ? "blk-nogo" : scoreClass(b.top_score)} ${open === b.block_start ? "blk-open" : ""}`}
                 onClick={() => setOpen(open === b.block_start ? null : b.block_start)}>
                 <span>{hm(new Date(b.block_start))}</span>
-                <b>{b.safety === "no_go" ? "✕" : Math.round(b.score)}</b>
+                <b>{b.no_go ? "✕" : Math.round(b.top_score)}</b>
               </button>
             ))}
           </div>
           {blocks.filter((b) => b.block_start === open).map((b) => (
             <div key={b.block_start} className="detail">
-              <div className="detail-head">
-                <ScoreBadge score={b.score} size="sm" />
-                <span>{pct(b.p_success)} chance of at least one {spName(b.species_id).toLowerCase()}</span>
-              </div>
-              {b.safety === "no_go" && <div className="banner banner-err">{b.safety_text}</div>}
-              <Reasons s={b} />
-              <Flags s={b} />
-              <Conditions c={b.conditions} />
+              {b.no_go ? (
+                <div className="banner banner-err">{b.safety_text ?? "Unsafe in this window"}</div>
+              ) : (
+                <>
+                  <div className="detail-head">
+                    <ScoreBadge score={b.top_score} size="sm" />
+                    <span>Best chance: {pct(b.p_any)} ({spName([...b.species].sort((x, y) => y.p_success - x.p_success)[0].species_id).toLowerCase()})</span>
+                  </div>
+                  {b.safety === "caution" && <span className="flag flag-warn">⚠ {b.safety_text}</span>}
+                  <ul className="sp-list">
+                    {b.species.map((s) => (
+                      <li key={s.species_id}>
+                        <div className="sp-line">
+                          <span className={`dot ${scoreClass(s.score)}`} />
+                          <b>{spName(s.species_id)}</b>
+                          <span className="muted">{pct(s.p_success)}</span>
+                          <b className="num">{Math.round(s.score)}</b>
+                        </div>
+                        <small className="muted">
+                          {s.reasons.slice(0, 3).map((x) => `${x.text} ${x.points >= 0 ? "+" : ""}${Math.round(x.points)}`).join(" · ")}
+                        </small>
+                        {s.regulations?.map((g) => (
+                          <span key={g.id} className={`flag ${g.action === "permit" ? "flag-info" : "flag-warn"}`}>
+                            {g.action === "permit" ? "🎫" : "⛔"} {g.text}
+                          </span>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                  {b.species[0] && <Conditions c={b.species[0].conditions} />}
+                </>
+              )}
             </div>
           ))}
         </section>
@@ -120,7 +145,7 @@ const PHASE: Record<string, string> = {
   falling_mid: "Mid run-out", falling_late: "Last of the run-out",
 };
 
-function Conditions({ c }: { c: Score["conditions"] }) {
+function Conditions({ c }: { c: Record<string, number | string | null> }) {
   const items: [string, string | null][] = [
     ["Wind", c.wind_kmh != null ? `${c.wind_kmh} km/h ${c.wind_dir ?? ""}${c.gust_kmh ? ` (gust ${c.gust_kmh})` : ""}` : null],
     ["Sea", c.wave_h != null ? `${c.wave_h} m${c.swell_period ? ` @ ${c.swell_period}s` : ""}` : null],

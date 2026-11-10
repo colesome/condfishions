@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "./lib/api";
+import { api, configError } from "./lib/api";
 import { windowRange, type WindowId } from "./lib/time";
 import { travelMin } from "./lib/travel";
-import type { Origin, Run, Score, Settings, Species, Spot } from "./lib/types";
+import type { Origin, Run, Settings, Species, Spot, SpotWindow, Water } from "./lib/types";
 import { AddSpot } from "./screens/AddSpot";
 import { Login } from "./screens/Login";
 import { MapScreen } from "./screens/MapScreen";
@@ -28,13 +28,13 @@ export default function App() {
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [windowId, setWindowId] = useState<WindowId>(ls.get("windowId", "today"));
-  const [speciesSel, setSpeciesSel] = useState<string | null>(ls.get("speciesSel", null));
+  const [water, setWater] = useState<Water>(ls.get("water", "salt"));
   const [sortBy, setSortBy] = useState<SortBy>(ls.get("sortBy", "score"));
-  const [results, setResults] = useState<Score[] | null>(null);
+  const [results, setResults] = useState<SpotWindow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
-  const [openSpot, setOpenSpot] = useState<{ id: string; species?: string } | null>(null);
+  const [openSpot, setOpenSpot] = useState<string | null>(null);
   const [adding, setAdding] = useState<{ lat: number; lon: number } | null>(null);
   const [now, setNow] = useState<Date>(() => api.now());
 
@@ -72,43 +72,45 @@ export default function App() {
     const m = new Map<string, number>();
     if (!origin) return m;
     for (const s of spots) {
+      if ((water === "fresh") !== s.type.startsWith("fresh")) continue;
       const t = travelMin(origin.lat, origin.lon, s);
       if (t <= origin.max_travel_min) m.set(s.id, t);
     }
     return m;
-  }, [spots, origin?.lat, origin?.lon, origin?.max_travel_min]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [spots, water, origin?.lat, origin?.lon, origin?.max_travel_min]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spotMap = useMemo(() => new Map(spots.map((s) => [s.id, s])), [spots]);
 
   useEffect(() => {
     if (!authed || !origin) return;
-    ls.set("windowId", windowId); ls.set("speciesSel", speciesSel); ls.set("sortBy", sortBy);
+    ls.set("windowId", windowId); ls.set("water", water); ls.set("sortBy", sortBy);
     const ids = [...travel.keys()];
-    const key = `res|${windowId}|${speciesSel}|${ids.length}|${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
+    const key = `res2|${windowId}|${water}|${ids.length}|${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
     if (!ids.length) { setResults([]); return; }
     const t = api.now();
     setNow(t);
     const [from, to] = windowRange(windowId, t);
     setLoading(true); setError(null);
-    api.bestBlocks(ids, speciesSel ? [speciesSel] : null, from, to)
+    api.spotWindows(ids, from, to)
       .then((r) => { setResults(r); setStale(false); ls.set(key, r); })
       .catch((e) => {
-        const cached = ls.get<Score[] | null>(key, null);
+        const cached = ls.get<SpotWindow[] | null>(key, null);
         if (cached) { setResults(cached); setStale(true); } else setError(String(e.message ?? e));
       })
       .finally(() => setLoading(false));
-  }, [authed, travel, windowId, speciesSel, sortBy]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authed, travel, windowId, sortBy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSettings = async (s: Settings) => {
     setSettings(s);
     try { await api.saveSettings(s); } catch (e) { setError(`Couldn't save: ${(e as Error).message}`); }
   };
 
+  if (configError) return <div className="empty">{configError}</div>;
   if (authed === null) return <div className="empty">Loading…</div>;
   if (!authed) return <Login onDone={() => setAuthed(true)} />;
   if (!settings || !origin) return <div className="empty">{error ?? "Loading…"}</div>;
 
-  const sheetSpot = openSpot ? spotMap.get(openSpot.id) : undefined;
+  const sheetSpot = openSpot ? spotMap.get(openSpot) : undefined;
 
   return (
     <div className="app">
@@ -117,13 +119,13 @@ export default function App() {
         {tab === "suggest" && (
           <Suggest origin={origin} now={now} spots={spotMap} species={species} travel={travel}
             results={results} loading={loading} error={error} stale={stale}
-            windowId={windowId} setWindowId={setWindowId} speciesSel={speciesSel} setSpeciesSel={setSpeciesSel}
+            windowId={windowId} setWindowId={setWindowId} water={water} setWater={setWater}
             sortBy={sortBy} setSortBy={setSortBy}
-            openSpot={(id, sp) => setOpenSpot({ id, species: sp })} openPlaces={() => setTab("places")} />
+            openSpot={(id) => setOpenSpot(id)} openPlaces={() => setTab("places")} />
         )}
         {tab === "map" && (
           <MapScreen origin={origin} spots={spots} travel={travel} results={results}
-            openSpot={(id) => setOpenSpot({ id })} addSpotAt={(lat, lon) => setAdding({ lat, lon })} />
+            openSpot={(id) => setOpenSpot(id)} addSpotAt={(lat, lon) => setAdding({ lat, lon })} />
         )}
         {tab === "places" && (
           <Places settings={settings} saveSettings={saveSettings} useGps={useGps} setUseGps={setUseGps}
@@ -139,7 +141,7 @@ export default function App() {
       </nav>
 
       {sheetSpot && (
-        <SpotSheet spot={sheetSpot} species={species} initialSpecies={openSpot?.species}
+        <SpotSheet spot={sheetSpot} species={species}
           travelMin={travel.get(sheetSpot.id) ?? travelMin(origin.lat, origin.lon, sheetSpot)} now={now}
           onClose={() => setOpenSpot(null)} onDeleted={() => { setOpenSpot(null); loadBase(); }} />
       )}

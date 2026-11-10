@@ -75,7 +75,7 @@ export function AddSpot({ lat, lon, species, onClose, onSaved }: Props) {
             </label>
           </>
         )}
-        <label>Target species
+        <label>Common species here
           <div className="checks">
             {choices.map((s) => (
               <label key={s.id} className="check">
