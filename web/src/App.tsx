@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, configError } from "./lib/api";
 import { windowRange, type WindowId } from "./lib/time";
 import { travelMin } from "./lib/travel";
-import type { Origin, Run, Settings, Species, Spot, SpotWindow, Water } from "./lib/types";
+import type { Origin, Run, Settings, Species, Spot, SpotWindow } from "./lib/types";
 import { AddSpot } from "./screens/AddSpot";
 import { Login } from "./screens/Login";
 import { MapScreen } from "./screens/MapScreen";
@@ -16,6 +16,8 @@ import { loadActive, startTrip, type ActiveTrip } from "./lib/trips";
 import { Trips } from "./screens/Trips";
 
 type Tab = "suggest" | "trips" | "places";
+
+const isSalt = (s: Spot) => !s.type.startsWith("fresh");
 
 const ls = {
   get: <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -33,7 +35,6 @@ export default function App() {
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [windowId, setWindowId] = useState<WindowId>(ls.get("windowId3", "next3"));
-  const [water, setWater] = useState<Water>(ls.get("water", "salt"));
   const [results, setResults] = useState<SpotWindow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,11 +57,13 @@ export default function App() {
   const loadBase = useCallback(async () => {
     try {
       const [sp, spc, st, run] = await Promise.all([api.spots(), api.species(), api.settings(), api.lastRun()]);
-      setSpots(sp); setSpecies(spc); setSettings(st); setLastRun(run);
-      ls.set("base", { sp, spc, st, run });
+      // Freshwater is switched off for now: hide any dams/rivers and bass still in the database.
+      const salt = sp.filter(isSalt), saltSpecies = spc.filter((x) => x.id !== "bass");
+      setSpots(salt); setSpecies(saltSpecies); setSettings(st); setLastRun(run);
+      ls.set("base", { sp: salt, spc: saltSpecies, st, run });
     } catch (e) {
       const cached = ls.get<{ sp: Spot[]; spc: Species[]; st: Settings; run: Run | null } | null>("base", null);
-      if (cached) { setSpots(cached.sp); setSpecies(cached.spc); setSettings(cached.st); setLastRun(cached.run); setStale(true); }
+      if (cached) { setSpots(cached.sp.filter(isSalt)); setSpecies(cached.spc.filter((x) => x.id !== "bass")); setSettings(cached.st); setLastRun(cached.run); setStale(true); }
       else setError(String((e as Error).message ?? e));
     }
   }, []);
@@ -82,20 +85,19 @@ export default function App() {
     const m = new Map<string, number>();
     if (!origin) return m;
     for (const s of spots) {
-      if ((water === "fresh") !== s.type.startsWith("fresh")) continue;
       const t = travelMin(origin.lat, origin.lon, s);
       if (t <= origin.max_travel_min) m.set(s.id, t);
     }
     return m;
-  }, [spots, water, origin?.lat, origin?.lon, origin?.max_travel_min]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [spots, origin?.lat, origin?.lon, origin?.max_travel_min]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spotMap = useMemo(() => new Map(spots.map((s) => [s.id, s])), [spots]);
 
   useEffect(() => {
     if (!authed || !origin) return;
-    ls.set("windowId3", windowId); ls.set("water", water);
+    ls.set("windowId3", windowId);
     const ids = [...travel.keys()];
-    const key = `res2|${windowId}|${water}|${ids.length}|${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
+    const key = `res3|${windowId}|${ids.length}|${origin.lat.toFixed(2)},${origin.lon.toFixed(2)}`;
     if (!ids.length) { setResults([]); return; }
     const t = api.now();
     setNow(t);
@@ -135,7 +137,7 @@ export default function App() {
         {tab === "suggest" && (
           <Suggest origin={origin} now={now} spots={spotMap} species={species} travel={travel}
             results={results} loading={loading} error={error} stale={stale}
-            windowId={windowId} setWindowId={setWindowId} water={water} setWater={setWater}
+            windowId={windowId} setWindowId={setWindowId} lastRun={lastRun}
             openSpot={(id, block) => setOpenSpot({ id, block })} openPlaces={() => setTab("places")}
             openMap={() => setShowMap(true)} activeTripSpot={active?.trip.spot_id ?? null} />
         )}

@@ -91,6 +91,7 @@ class Config:
     regulations: list[Regulation]
     home: Home
     raw_species_yaml: dict = field(default_factory=dict, repr=False)
+    freshwater: bool = True
 
     def spot(self, spot_id: str) -> Spot:
         return next(s for s in self.spots if s.id == spot_id)
@@ -101,12 +102,16 @@ def _read(name: str, config_dir: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def load_config(config_dir: Path = CONFIG_DIR) -> Config:
+def load_config(config_dir: Path = CONFIG_DIR, freshwater: bool | None = None) -> Config:
     spots_y = _read("spots.yaml", config_dir)
     species_y = _read("species.yaml", config_dir)
     home_y = _read("home.yaml", config_dir)
 
     spots = [Spot(**s) for s in spots_y["spots"]]
+    if freshwater is None:
+        freshwater = bool(spots_y.get("freshwater", True))
+    if not freshwater:  # switched off in spots.yaml: drop dams/rivers and freshwater-only species
+        spots = [s for s in spots if not s.fresh]
     default_w = species_y["defaults"]["weights"]
     species = {}
     for sid, s in species_y["species"].items():
@@ -123,9 +128,13 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
                    start=r["from"], end=r["to"], action=r["action"], text=r["text"])
         for r in species_y.get("regulations", [])
     ]
+    if not freshwater:
+        used = {sid for s in spots for sid in s.species}
+        species = {k: v for k, v in species.items() if k in used}
+        regs = [r for r in regs if set(r.species) & used]
     _validate(spots, species)
     return Config(spots=spots, species=species, regulations=regs, home=Home(**home_y),
-                  raw_species_yaml=species_y)
+                  raw_species_yaml=species_y, freshwater=freshwater)
 
 
 def _validate(spots: list[Spot], species: dict[str, Species]) -> None:

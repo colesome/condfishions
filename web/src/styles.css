@@ -117,10 +117,11 @@ button.row.accent { color: var(--accent); }
 /* day strip */
 .day { margin-top: 20px; }
 .day h3 { font-size: 15px; font-weight: 600; margin: 0 4px 8px; }
-.strip { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .blk { border: 0; border-radius: 10px; padding: 6px 0; display: flex; flex-direction: column; align-items: center; color: #fff; }
-.blk span { font-size: 10px; opacity: .92; }
-.blk b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.blk span { font-size: 11px; font-weight: 600; opacity: .95; }
+.blk small { font-size: 10px; opacity: .92; }
+.blk b { font-size: 18px; font-variant-numeric: tabular-nums; }
 .blk-nogo { background: #d8d8dc; color: #8a8a8e; }
 .blk-open { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink); }
 .detail { background: var(--card); border-radius: var(--radius); padding: 14px; margin-top: 10px; }
@@ -299,3 +300,12 @@ h1.brand { font-size: 26px; }
 .photo-actions { display: flex; gap: 10px; margin-top: 10px; }
 .photo-btn { flex: 1; font-size: 15px; padding: 11px 10px; }
 .photo-btn-alt { background: var(--card); color: var(--accent); }
+
+/* part-of-day chips on a spot card */
+.parts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+.alt.part { display: flex; flex-direction: column; align-items: center; gap: 1px; border-radius: 10px; padding: 5px 2px; min-width: 0; }
+.alt.part b { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.alt.part small { font-size: 10px; font-weight: 500; opacity: .85; white-space: nowrap; }
+.alt.part-on { box-shadow: inset 0 0 0 1.5px currentColor; }
+.run-note { margin: 6px 4px 0; font-size: 12px; }
+.card-weather { font-size: 13px; color: var(--ink); margin-top: 6px; }

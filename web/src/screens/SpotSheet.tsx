@@ -3,7 +3,9 @@ import { TideChart } from "../components/TideChart";
 import { bandFor } from "../lib/bands";
 import { toBlocks } from "../lib/aggregate";
 import { api } from "../lib/api";
-import { fmtWhen, hm, sameDay } from "../lib/time";
+import { COMFORT, comfortOf, weatherLine } from "../lib/comfort";
+import { fishDay, partOf } from "../lib/parts";
+import { fmtRange, fmtWhen, sameDay } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
 import type { Score, Species, Spot, SpotPhoto, Tide, TripSummary } from "../lib/types";
 import { shortName } from "./Suggest";
@@ -24,7 +26,6 @@ type Tab = "times" | "tide" | "photos";
 
 const TYPE_LABEL: Record<string, string> = {
   rock: "Rock platform", rockwall: "Rock wall", beach: "Beach", estuary: "Estuary", jetty: "Jetty",
-  fresh_dam: "Dam", fresh_river: "River",
 };
 
 export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishingHere, onGoFish, onClose, onDeleted }: Props) {
@@ -50,8 +51,8 @@ export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishing
   const blocks = useMemo(() => toBlocks(rows ?? []), [rows]);
   const days = useMemo(() => {
     const out: { day: Date; blocks: typeof blocks }[] = [];
-    for (const b of blocks) {
-      const d = new Date(b.block_start);
+    for (const b of blocks) { // a night window after midnight stays with the evening before
+      const d = new Date(fishDay(b.block_start));
       const last = out[out.length - 1];
       if (last && sameDay(last.day, d)) last.blocks.push(b);
       else out.push({ day: d, blocks: [b] });
@@ -61,15 +62,16 @@ export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishing
 
   useEffect(() => { // default selection: the block we came from, else the best in the next 24 h
     if (open || !blocks.length) return;
-    const best = blocks.filter((b) => !b.no_go).slice(0, 8).sort((a, b) => b.top_score - a.top_score)[0];
+    const best = blocks.filter((b) => !b.no_go).slice(0, 4).sort((a, b) => b.top_score - a.top_score)[0];
     if (best) setOpen(best.block_start);
   }, [blocks, open]);
 
   const sel = blocks.find((b) => b.block_start === open) ?? null;
+  // The rating to record when a trip starts: the window we're inside, else the next one coming up.
   const current = blocks.find((b) => {
     const t = new Date(b.block_start).getTime();
     return now.getTime() >= t && now.getTime() < t + b.block_hours * 3600_000;
-  });
+  }) ?? blocks.find((b) => new Date(b.block_start).getTime() > now.getTime());
   const tideDay = sel ? new Date(sel.block_start) : now;
 
   const spName = (id: string) => shortName(species.find((s) => s.id === id), id);
@@ -84,7 +86,7 @@ export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishing
   }
 
   function pickTideDay(d: Date) {
-    const sameDayBlocks = blocks.filter((b) => sameDay(new Date(b.block_start), d) && !b.no_go)
+    const sameDayBlocks = blocks.filter((b) => sameDay(new Date(fishDay(b.block_start)), d) && !b.no_go)
       .sort((a, b) => b.top_score - a.top_score);
     setOpen(sameDayBlocks[0]?.block_start ?? null);
   }
@@ -125,8 +127,9 @@ export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishing
                       className={`blk ${b.no_go ? "blk-nogo" : ""} ${open === b.block_start ? "blk-open" : ""}`}
                       style={b.no_go ? undefined : { background: band.color }}
                       onClick={() => setOpen(open === b.block_start ? null : b.block_start)}>
-                      <span>{hm(new Date(b.block_start))}</span>
+                      <span>{partOf(b.block_start).label}</span>
                       <b>{b.no_go ? "✕" : Math.round(b.top_score)}</b>
+                      <small>{fmtRange(b.block_start, b.block_hours)}{comfortEmoji(b.species[0]?.conditions)}</small>
                     </button>
                   );
                 })}
@@ -215,6 +218,7 @@ function BlockDetail({ b, spName, now, onTide }: {
       ) : (
         <>
           <div className="band-line" style={{ color: band.color }}>{band.emoji} {band.name} · {Math.round(b.top_score)}</div>
+          {weatherLine(b.species[0]?.conditions) && <div className="card-weather">{weatherLine(b.species[0]?.conditions)}</div>}
           {b.safety === "caution" && <span className="flag flag-warn">⚠️ {b.safety_text}</span>}
           <ul className="sp-list">
             {b.species.map((s) => {
@@ -240,6 +244,11 @@ function BlockDetail({ b, spName, now, onTide }: {
       )}
     </div>
   );
+}
+
+function comfortEmoji(c: Record<string, number | string | null> | undefined): string {
+  const k = comfortOf(c);
+  return k && k !== "pleasant" ? ` ${COMFORT[k].emoji}` : "";
 }
 
 const PHASE: Record<string, string> = {

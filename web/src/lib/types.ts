@@ -67,7 +67,13 @@ export interface SpeciesScore {
   conditions: Record<string, number | string | null>;
 }
 
-/** One spot's best 3-hour block in a window, with every species' score in that block. */
+export type PartId = "morning" | "day" | "evening" | "night";
+
+/** A window at a spot: the best few hours of one part of a day. */
+export type Comfort = "pleasant" | "breezy" | "windy" | "wet" | "wet_windy";
+export interface WindowLite { block_start: string; block_hours: number; score: number; part?: PartId | null; comfort?: Comfort | null }
+
+/** One spot's best window in a date range, with every species' score in that window. */
 export interface SpotWindow {
   spot_id: string;
   block_start: string;
@@ -77,10 +83,11 @@ export interface SpotWindow {
   safety: "ok" | "caution";
   safety_text: string | null;
   species: SpeciesScore[];
-  alt_blocks?: { block_start: string; block_hours: number; score: number }[];
+  /** Every window at this spot in the range (best per part of each day), earliest first. */
+  windows?: WindowLite[] | null;
+  /** Older database function: best block on each other day. */
+  alt_blocks?: WindowLite[];
 }
-
-export type Water = "salt" | "fresh";
 
 export interface Tide {
   series: [string, number][];

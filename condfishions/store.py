@@ -76,6 +76,25 @@ class Store:
         if r.status_code >= 300:
             raise RuntimeError(f"delete {table} failed {r.status_code}: {r.text[:500]}")
 
+    def select(self, table: str, params: dict) -> list[dict]:
+        """Read rows (PostgREST filters in `params`). Empty when running locally."""
+        if not self.enabled:
+            return []
+        r = requests.get(f"{self.url}/rest/v1/{table}", params=params, headers=self._h(), timeout=60)
+        if r.status_code >= 300:
+            raise RuntimeError(f"select {table} failed {r.status_code}: {r.text[:300]}")
+        return r.json()
+
+    def delete_where(self, table: str, params: dict) -> None:
+        """Delete rows matching PostgREST filters. `params` must not be empty."""
+        if not self.enabled:
+            return
+        if not params:
+            raise ValueError("delete_where needs at least one filter")
+        r = requests.delete(f"{self.url}/rest/v1/{table}", params=params, headers=self._h(), timeout=120)
+        if r.status_code >= 300:
+            raise RuntimeError(f"delete {table} failed {r.status_code}: {r.text[:500]}")
+
     def get_settings(self) -> dict | None:
         """Home location etc. set from the app (settings table, single row id=1)."""
         if not self.enabled:

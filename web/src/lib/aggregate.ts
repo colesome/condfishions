@@ -1,4 +1,13 @@
-import type { Score, SpotWindow } from "./types";
+import { comfortOf } from "./comfort";
+import type { PartId, Score, SpotWindow } from "./types";
+
+const closed = (r: Score) => (r.regulations ?? []).some((g) => g.action === "closed");
+
+/** A spot's rating: the average of its species, leaving out any in a closed season. */
+export function spotRating(rows: Score[]): number {
+  const open = rows.filter((r) => !closed(r));
+  return open.length ? Math.round((open.reduce((a, r) => a + r.score, 0) / open.length) * 10) / 10 : 0;
+}
 
 /** Group per-species rows into per-spot blocks (same logic as SQL best_spot_windows). */
 export function toBlocks(rows: Score[]): (SpotWindow & { no_go: boolean })[] {
@@ -15,7 +24,7 @@ export function toBlocks(rows: Score[]): (SpotWindow & { no_go: boolean })[] {
       spot_id: g[0].spot_id,
       block_start: g[0].block_start,
       block_hours: g[0].block_hours,
-      top_score: ok.length ? Math.round((ok.reduce((a, r) => a + r.score, 0) / ok.length) * 10) / 10 : 0,
+      top_score: ok.length ? spotRating(ok) : 0,
       p_any: ok.length ? Math.max(...use.map((r) => r.p_success)) : 0,
       safety: (use.some((r) => r.safety === "caution") ? "caution" : "ok") as "caution" | "ok",
       safety_text: g.find((r) => r.safety_text)?.safety_text ?? null,
@@ -28,21 +37,20 @@ export function toBlocks(rows: Score[]): (SpotWindow & { no_go: boolean })[] {
   }).sort((a, b) => a.block_start.localeCompare(b.block_start));
 }
 
-/** Best block per spot, plus the best block on each other day (same as SQL best_spot_windows). */
+/** Best window per spot, plus every window in the range (same as SQL best_spot_windows). */
 export function bestPerSpot(rows: Score[]): SpotWindow[] {
   const bySpot = new Map<string, SpotWindow[]>();
   for (const b of toBlocks(rows)) {
     if (b.no_go) continue;
     (bySpot.get(b.spot_id) ?? bySpot.set(b.spot_id, []).get(b.spot_id)!).push(b);
   }
-  const dayKey = (iso: string) => new Date(iso).toDateString();
   return [...bySpot.values()].map((blocks) => {
-    const sorted = [...blocks].sort((a, b) => b.top_score - a.top_score);
-    const best = sorted[0];
-    const perDay = new Map<string, SpotWindow>();
-    for (const b of sorted) if (!perDay.has(dayKey(b.block_start))) perDay.set(dayKey(b.block_start), b);
-    const alt = [...perDay.values()].filter((b) => dayKey(b.block_start) !== dayKey(best.block_start)).slice(0, 3)
-      .map((b) => ({ block_start: b.block_start, block_hours: b.block_hours, score: b.top_score }));
-    return { ...best, alt_blocks: alt };
+    const best = [...blocks].sort((a, b) => b.top_score - a.top_score || a.block_start.localeCompare(b.block_start))[0];
+    const windows = blocks.map((b) => ({
+      block_start: b.block_start, block_hours: b.block_hours, score: b.top_score,
+      part: (b.species[0]?.conditions?.part ?? null) as PartId | null,
+      comfort: comfortOf(b.species[0]?.conditions),
+    }));
+    return { ...best, windows };
   });
 }

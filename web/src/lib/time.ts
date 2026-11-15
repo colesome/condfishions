@@ -19,11 +19,10 @@ function midnight(d: Date, addDays = 0): Date {
   return x;
 }
 
-/** [from, to) for a window. `from` is floored to the current 3-hour block. */
+/** [from, to) for a window. `from` reaches back 2 hours so a window you are already inside still shows. */
 export function windowRange(id: WindowId, now: Date): [Date, Date] {
-  const blockStart = new Date(now);
+  const blockStart = new Date(now.getTime() - 2 * H);
   blockStart.setMinutes(0, 0, 0);
-  blockStart.setHours(blockStart.getHours() - (blockStart.getHours() % 3));
   switch (id) {
     case "next6":
       return [blockStart, new Date(now.getTime() + 6 * H)];
@@ -100,4 +99,12 @@ export function fmtShort(iso: string, now = new Date()): string {
   const day = sameDay(d, now) ? "Today" : sameDay(d, tomorrow) ? "Tmrw"
     : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
   return `${day} ${hm(d)}`;
+}
+
+/** "4–7am", "11am–2pm", "10pm–1am" — the real hours of a window. */
+export function fmtRange(iso: string, hours = 3): string {
+  const d = new Date(iso);
+  const end = new Date(d.getTime() + hours * H);
+  const a = hm(d), b = hm(end);
+  return a.slice(-2) === b.slice(-2) ? `${a.slice(0, -2)}–${b}` : `${a}–${b}`;
 }
