@@ -130,9 +130,9 @@ def main(argv: list[str] | None = None) -> int:
         with open(args.fixture, encoding="utf-8") as f:
             raw = json.load(f)
     else:
-        raw = fetch_all(cfg.spots, forecast_days=args.days)
+        raw = fetch_all(cfg.spots, forecast_days=args.days, store=store)
 
-    feats_by_spot, rows, problems = {}, [], list(user_warns)
+    feats_by_spot, rows, problems = {}, [], list(user_warns) + list(raw.get("notes", []))
     for spot in cfg.spots:
         w = raw["weather"].get(spot.id)
         if w is None:

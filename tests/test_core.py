@@ -196,3 +196,52 @@ def test_tide_rows_and_backfill_summary(cfg, payload):
     w = to_frame(payload["weather"][spot.id]); m = to_frame(payload["marine"][spot.id])
     v = summarise(w, m, now, now + pd.Timedelta(hours=3))
     assert {"wind_kmh", "wind_dir", "rain_mm", "wave_h", "sst"} <= set(v)
+
+
+# ── fetch: Open-Meteo outage falls back to the last good payload ──────────────
+
+class _MemStore:
+    def __init__(self):
+        self.objs = {}
+
+    def upload_gz(self, bucket, path, obj):
+        self.objs[(bucket, path)] = json.loads(json.dumps(obj))
+
+    def download_gz(self, bucket, path):
+        return self.objs[(bucket, path)]
+
+
+def _fake_get(fail_host=None):
+    def get(url, params):
+        if fail_host and fail_host in url:
+            raise RuntimeError("Open-Meteo request failed: Read timed out.")
+        n = len(params["latitude"].split(","))
+        return [{"hourly": {"time": [], "src": url}} for _ in range(n)]
+    return get
+
+
+def test_fetch_uses_cache_when_weather_api_is_down(monkeypatch):
+    from condfishions import fetch
+    cfg, store = load_config(), _MemStore()
+    monkeypatch.setattr(fetch, "_get", _fake_get())
+    live = fetch.fetch_all(cfg.spots, store=store)
+    assert live["notes"] == [] and len(live["weather"]) == len(cfg.spots)
+
+    monkeypatch.setattr(fetch, "_get", _fake_get(fail_host="api.open-meteo.com/v1/forecast"))
+    out = fetch.fetch_all(cfg.spots, store=store)
+    assert out["weather"] == live["weather"]          # served from cache
+    assert out["marine"] == live["marine"]            # marine still live
+    assert len(out["notes"]) == 1 and "weather forecast is 0 h old" in out["notes"][0]
+
+
+def test_fetch_fails_when_cache_missing_or_stale(monkeypatch):
+    import datetime as dt
+    from condfishions import fetch
+    cfg, store = load_config(), _MemStore()
+    monkeypatch.setattr(fetch, "_get", _fake_get(fail_host="api.open-meteo.com/v1/forecast"))
+    with pytest.raises(RuntimeError):
+        fetch.fetch_all(cfg.spots, store=store)       # nothing cached yet
+    old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=fetch.CACHE_MAX_AGE_H + 1)).isoformat()
+    store.upload_gz("raw", "latest/weather.json.gz", {"fetched_at": old, "data": {"x": {}}})
+    with pytest.raises(RuntimeError):
+        fetch.fetch_all(cfg.spots, store=store)       # too old to trust

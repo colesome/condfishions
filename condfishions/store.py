@@ -127,6 +127,18 @@ class Store:
         if r.status_code >= 300:
             raise RuntimeError(f"upload {bucket}/{path} failed {r.status_code}: {r.text[:300]}")
 
+    def download_gz(self, bucket: str, path: str):
+        """Read back an object written by upload_gz. Raises if it is missing."""
+        if not self.enabled:
+            data = (self.out / bucket / path).read_bytes()
+        else:
+            r = requests.get(f"{self.url}/storage/v1/object/{bucket}/{path}",
+                             headers={"apikey": self.key, "Authorization": f"Bearer {self.key}"}, timeout=60)
+            if r.status_code >= 300:
+                raise RuntimeError(f"download {bucket}/{path} failed {r.status_code}: {r.text[:300]}")
+            data = r.content
+        return json.loads(gzip.decompress(data))
+
     def _dump(self, table: str, rows: list[dict]) -> None:
         p = self.out / f"{table}.json"
         existing = json.loads(p.read_text()) if p.exists() else []
