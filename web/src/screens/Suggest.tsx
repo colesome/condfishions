@@ -1,8 +1,9 @@
 import { Chip } from "../components/ui";
 import { BANDS, bandFor } from "../lib/bands";
-import { WINDOWS, fmtShort, fmtWhen, type WindowId } from "../lib/time";
+import { partOf, splitWindows } from "../lib/parts";
+import { WINDOWS, ago, fmtRange, fmtShort, fmtWhen, type WindowId } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
-import type { Origin, Species, Spot, SpotWindow, Water } from "../lib/types";
+import type { Origin, Run, Species, Spot, SpotWindow } from "../lib/types";
 
 interface Props {
   origin: Origin;
@@ -16,8 +17,7 @@ interface Props {
   stale: boolean;
   windowId: WindowId;
   setWindowId: (w: WindowId) => void;
-  water: Water;
-  setWater: (w: Water) => void;
+  lastRun: Run | null;
   openSpot: (id: string, blockStart?: string) => void;
   openPlaces: () => void;
   openMap: () => void;
@@ -52,11 +52,6 @@ export function Suggest(p: Props) {
         </div>
       </div>
 
-      <div className="seg">
-        <button className={p.water === "salt" ? "on" : ""} onClick={() => p.setWater("salt")}>🌊 Saltwater</button>
-        <button className={p.water === "fresh" ? "on" : ""} onClick={() => p.setWater("fresh")}>🏞️ Freshwater</button>
-      </div>
-
       <div className="chips">
         {WINDOWS.map((w) => (
           <Chip key={w.id} active={p.windowId === w.id} onClick={() => p.setWindowId(w.id)}>{w.label}</Chip>
@@ -64,6 +59,7 @@ export function Suggest(p: Props) {
       </div>
       {p.windowId === "week" && <p className="caption">Days 4–7 rely on longer-range wind and swell forecasts — treat them as a heads-up.</p>}
 
+      <RunNote run={p.lastRun} now={p.now} />
       {p.stale && <div className="banner">Offline — showing your last update.</div>}
       {p.error && !p.stale && <div className="banner banner-err">{p.error}</div>}
       {p.loading && !p.results && <div className="empty">Checking the water… 🎣</div>}
@@ -100,20 +96,7 @@ export function Suggest(p: Props) {
                       {p.activeTripSpot === r.spot_id && <span className="live-dot"> · Fishing now</span>}
                     </div>
                     {why.length > 0 && <div className="card-why">{capitalise(why.join(", "))}</div>}
-                    {r.alt_blocks && r.alt_blocks.length > 0 && (
-                      <div className="alts">
-                        <span>Also</span>
-                        {r.alt_blocks.map((a) => {
-                          const b = bandFor(a.score);
-                          return (
-                            <button key={a.block_start} className="alt" style={{ background: b.soft, color: b.color }}
-                              onClick={(e) => { e.stopPropagation(); p.openSpot(r.spot_id, a.block_start); }}>
-                              {fmtShort(a.block_start, p.now)} · {Math.round(a.score)}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <OtherTimes r={r} now={p.now} open={(b) => p.openSpot(r.spot_id, b)} />
                     {r.safety === "caution" && <span className="flag flag-warn">⚠️ {r.safety_text ?? "Caution"}</span>}
                     {regs.filter((g) => g.action !== "permit").map((g) => (
                       <span key={g.id} className="flag flag-warn">{g.text}</span>
@@ -126,8 +109,67 @@ export function Suggest(p: Props) {
           </ol>
         </section>
       ))}
-      {results.length > 0 && <p className="caption center">Rated on conditions for catching fish (50 = average) · closest first in each group</p>}
+      {results.length > 0 && <p className="caption center">Rated on conditions for catching fish: 50 is an ordinary time, 75+ is rare · closest first in each group</p>}
     </div>
+  );
+}
+
+/** When the scores were last worked out, and a heads-up if they are old or ran on an old forecast. */
+function RunNote({ run, now }: { run: Run | null; now: Date }) {
+  if (!run) return null;
+  const hours = (now.getTime() - new Date(run.created_at).getTime()) / 3600_000;
+  const old = (run.problems ?? []).find((x) => /forecast is \d+ h old/.test(x));
+  if (hours >= 9) {
+    return <div className="banner">Scores were last updated {ago(run.created_at, now)}. Updates run 4 times a day, so the last one or two didn't finish — usually the weather service being down.</div>;
+  }
+  return (
+    <p className="caption run-note">
+      Updated {ago(run.created_at, now)}
+      {old ? ` · the weather service was down, so this used the last forecast it had (${old.split(":")[0]})` : ""}
+    </p>
+  );
+}
+
+/** The other parts of the best day, then the best time on each other day. */
+function OtherTimes({ r, now, open }: { r: SpotWindow; now: Date; open: (blockStart: string) => void }) {
+  if (!r.windows) { // older database function: best time on other days only
+    if (!r.alt_blocks?.length) return null;
+    return (
+      <div className="alts">
+        <span>Also</span>
+        {r.alt_blocks.map((a) => <TimeChip key={a.block_start} label={fmtShort(a.block_start, now)} score={a.score} onClick={() => open(a.block_start)} />)}
+      </div>
+    );
+  }
+  const { sameDay, otherDays } = splitWindows(r, r.windows);
+  return (
+    <>
+      {sameDay.length > 1 && (
+        <div className="parts">
+          {sameDay.map((w) => (
+            <TimeChip key={w.block_start} on={w.block_start === r.block_start}
+              label={partOf(w.block_start).label} sub={fmtRange(w.block_start, w.block_hours)} score={w.score}
+              onClick={() => open(w.block_start)} />
+          ))}
+        </div>
+      )}
+      {otherDays.length > 0 && (
+        <div className="alts">
+          <span>Other days</span>
+          {otherDays.map((w) => <TimeChip key={w.block_start} label={fmtShort(w.block_start, now)} score={w.score} onClick={() => open(w.block_start)} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
+function TimeChip({ label, sub, score, on, onClick }: { label: string; sub?: string; score: number; on?: boolean; onClick: () => void }) {
+  const b = bandFor(score);
+  return (
+    <button className={`alt ${sub ? "part" : ""} ${on ? "part-on" : ""}`} style={{ background: b.soft, color: b.color }}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}>
+      {sub ? <><b>{label} · {Math.round(score)}</b><small>{sub}</small></> : <>{label} · {Math.round(score)}</>}
+    </button>
   );
 }
 

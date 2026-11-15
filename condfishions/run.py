@@ -208,8 +208,9 @@ def main(argv: list[str] | None = None) -> int:
     save_run(False)
     store.upsert("forecast_scores", rows, on_conflict="spot_id,species_id,block_start")
     # Windows move from run to run, so anything this run didn't write is out of date.
-    store.delete_where("forecast_scores", {"run_id": f"neq.{run_id}"})
-    store.delete_where("forecast_scores", {"run_id": "is.null"})
+    if rows:  # never wipe the table on a run that scored nothing
+        store.delete_where("forecast_scores", {"run_id": f"neq.{run_id}"})
+        store.delete_where("forecast_scores", {"run_id": "is.null"})
     if not cfg.freshwater:
         problems.extend(_remove_freshwater(store))
     try:

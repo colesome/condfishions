@@ -12,7 +12,7 @@ interface Props {
 
 const TYPES: [string, string][] = [
   ["rock", "Rock platform / headland"], ["rockwall", "Rock wall / breakwall"], ["beach", "Surf beach"],
-  ["estuary", "Estuary / river mouth"], ["jetty", "Jetty / pier"], ["fresh_dam", "Dam"], ["fresh_river", "Freshwater river"],
+  ["estuary", "Estuary / river mouth"], ["jetty", "Jetty / pier"],
 ];
 const DIRS: [string, number][] = [["N", 0], ["NE", 45], ["E", 90], ["SE", 135], ["S", 180], ["SW", 225], ["W", 270], ["NW", 315]];
 const SHELTER: [string, number][] = [["Open ocean", 0.1], ["Partly sheltered", 0.4], ["Sheltered", 0.8]];

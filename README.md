@@ -1,7 +1,7 @@
 # CondFishions
 
 Personal fishing-conditions app for land-based fishing in SEQ and far-northern NSW.
-It scores spot × species × 3-hour windows for the next 7 days, explains each score,
+It scores spot × species × the best 3 hours of each morning, day, evening and night for the next 7 days, explains each score,
 and (in later phases) learns from your own session logs.
 
 **Running cost: $0.** GitHub Actions + Supabase free tier + Open-Meteo.
@@ -13,9 +13,30 @@ compute tide / sun / moon locally     forecast_archive (daily)        catches, p
 score with config/species.yaml        sessions, catches, photos  ──►  learning layer (Phase 4)
 ```
 
+## How the rating is built (baseline_v3)
+
+- **50 is an ordinary time; 75+ is rare.** Season, light and tide are each centred on the
+  species' own average, so only better-than-usual conditions add points. Ideal water
+  temperature, dry weather and calm wind earn nothing; their bad side subtracts.
+- The weighted sum is stretched (`GAIN` in `condfishions/scoring.py`) and eased into 0–100 so
+  the best times stand clear of ordinary ones. In a simulated year about 1–2% of windows
+  reach 75, 20–25% reach 65 and about 15% fall under 45. Re-fit `GAIN` and the bands once a
+  few weeks of real scores are archived.
+- Each spot gets one window per part of the day (morning 4–10, day 10–16, evening 16–22,
+  night 22–4), slid hour by hour to the best 3 hours.
+
+## Daily forecast check
+
+Once a day (with the archive) `condfishions/verify.py` compares what the app scored on with
+what was measured, and saves it to `forecast_checks` (migration 0009):
+wind vs Bureau of Meteorology stations, waves and water temperature vs Queensland Government
+wave buoys, and tide turn times vs BOM tide predictions. Each row keeps the forecast/measured
+pairs for the learning layer. If the early-morning run fails, the next run of the day does the
+archive, trip backfill and check instead.
+
 ## What's here
 
-- `config/spots.yaml` — 52 land-based spots (Noosa → Brunswick Heads, Moreton/Straddie, bass dams).
+- `config/spots.yaml` — 42 saltwater land-based spots (Noosa → Brunswick Heads, Moreton/Straddie). The 10 bass dams/rivers are still listed but switched off with `freshwater: false`.
   Coordinates are approximate (`verified: false`); fix as you visit them.
 - `config/species.yaml` — transparent baseline rules for bream, flathead, tailor, trevally,
   jewfish, kingfish, Spanish mackerel, sharks and Australian bass, plus closed-season / permit flags.
@@ -62,8 +83,8 @@ full-screen like any app. Only your login can see data. Three tabs:
   about 3 days), grouped into five bands — 🔥 Tight Lines, 🎣 Pretty Good, 🤞 Worth a Crack,
   😐 Average, 💤 Wouldn't Bother — closest first in each band. Each spot shows its best time plus
   the best time on other days ("Also: Fri 6am · 78"), so you don't miss a better window.
-  Saltwater by default, Freshwater toggle; Map button for the map / adding your own spots.
-- **Spot page** — *Times* (3-hour strip per day; tap for every species' rating, reasons and
+  Each card shows the best time plus the best morning, day, evening and night that day; Map button for the map / adding your own spots.
+- **Spot page** — *Times* (morning / day / evening / night per day, with the real hours; tap for every species' rating, reasons and
   conditions), *Tide* (the day's tide curve with highs/lows, the selected time highlighted and
   "now" marked), *Photos* (your catches here) and your record ("6 trips · fish on 4").
   Big **Go fish here** button.
