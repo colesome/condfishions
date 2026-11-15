@@ -13,46 +13,49 @@
 #   swell_max metres of significant wave height at which the spot is NO-GO
 #             (safety gate; rock/rockwall/beach only). Long-period swell lowers it.
 #   extra_min fixed extra travel minutes (ferry, 4WD, walk-in) on top of driving
+#   tide_offset_min  minutes added to the model's tide times. Measured 15-16 Nov 2026 against BOM
+#             predictions: model ran ~75 min early at Brisbane Bar, ~33 min early at Gold Coast Seaway.
+#             Spots without it (Sunshine Coast, Bribie, Moreton, Straddie, Broadwater) are unchecked.
 #   marine    optional water point for the marine model if lat/lon is on land
 #   permit    SIP = Queensland Stocked Impoundment Permit required (18+)
 
 spots:
   # ── Brisbane / Moreton Bay (mainland) ──────────────────────────────────────
   - {id: shorncliffe_pier, name: Shorncliffe Pier, region: Moreton Bay, state: QLD,
-     lat: -27.3275, lon: 153.0870, type: jetty, tidal: true, facing: 90, shelter: 0.6,
+     lat: -27.3275, lon: 153.0870, type: jetty, tidal: true, tide_offset_min: 75, facing: 90, shelter: 0.6,
      species: [bream, flathead, tailor, trevally, jewfish, sharks]}
   - {id: cabbage_tree_creek, name: Cabbage Tree Creek mouth, region: Moreton Bay, state: QLD,
-     lat: -27.3380, lon: 153.0880, type: estuary, tidal: true, facing: 90, shelter: 0.8,
+     lat: -27.3380, lon: 153.0880, type: estuary, tidal: true, tide_offset_min: 75, facing: 90, shelter: 0.8,
      marine: [-27.33, 153.11], species: [bream, flathead, trevally, jewfish, tailor]}
   - {id: nudgee_beach, name: Nudgee Beach / Nudgee Creek, region: Moreton Bay, state: QLD,
-     lat: -27.3500, lon: 153.1000, type: estuary, tidal: true, facing: 45, shelter: 0.7,
+     lat: -27.3500, lon: 153.1000, type: estuary, tidal: true, tide_offset_min: 75, facing: 45, shelter: 0.7,
      marine: [-27.33, 153.12], species: [bream, flathead]}
   - {id: hornibrook_bridge, name: Hornibrook Bridge / Pine River mouth, region: Moreton Bay, state: QLD,
-     lat: -27.2850, lon: 153.0730, type: estuary, tidal: true, facing: 0, shelter: 0.7,
+     lat: -27.2850, lon: 153.0730, type: estuary, tidal: true, tide_offset_min: 75, facing: 0, shelter: 0.7,
      marine: [-27.27, 153.10], species: [bream, flathead, tailor, trevally, jewfish]}
   - {id: woody_point_jetty, name: Woody Point Jetty, region: Redcliffe, state: QLD,
-     lat: -27.2620, lon: 153.1030, type: jetty, tidal: true, facing: 200, shelter: 0.6,
+     lat: -27.2620, lon: 153.1030, type: jetty, tidal: true, tide_offset_min: 75, facing: 200, shelter: 0.6,
      marine: [-27.28, 153.11], species: [bream, flathead, tailor, sharks]}
   - {id: redcliffe_jetty, name: Redcliffe Jetty, region: Redcliffe, state: QLD,
-     lat: -27.2267, lon: 153.1172, type: jetty, tidal: true, facing: 90, shelter: 0.4,
+     lat: -27.2267, lon: 153.1172, type: jetty, tidal: true, tide_offset_min: 75, facing: 90, shelter: 0.4,
      species: [bream, flathead, tailor, trevally, jewfish, sharks]}
   - {id: scarborough_point, name: Scarborough Point / reef wall, region: Redcliffe, state: QLD,
-     lat: -27.1950, lon: 153.1130, type: rockwall, tidal: true, facing: 30, shelter: 0.4, swell_max: 2.0,
+     lat: -27.1950, lon: 153.1130, type: rockwall, tidal: true, tide_offset_min: 75, facing: 30, shelter: 0.4, swell_max: 2.0,
      species: [tailor, bream, trevally, jewfish, sharks]}
   - {id: colmslie_reserve, name: Colmslie Reserve (Brisbane River), region: Brisbane River, state: QLD,
-     lat: -27.4530, lon: 153.0790, type: estuary, tidal: true, facing: 270, shelter: 0.9,
+     lat: -27.4530, lon: 153.0790, type: estuary, tidal: true, tide_offset_min: 75, facing: 270, shelter: 0.9,
      marine: [-27.36, 153.17], species: [bream, jewfish, trevally, sharks]}
   - {id: wynnum_jetty, name: Wynnum Jetty, region: Bayside, state: QLD,
-     lat: -27.4300, lon: 153.1730, type: jetty, tidal: true, facing: 70, shelter: 0.6,
+     lat: -27.4300, lon: 153.1730, type: jetty, tidal: true, tide_offset_min: 75, facing: 70, shelter: 0.6,
      species: [bream, flathead, sharks]}
   - {id: manly_harbour_wall, name: Manly Boat Harbour rock wall, region: Bayside, state: QLD,
-     lat: -27.4560, lon: 153.1920, type: rockwall, tidal: true, facing: 90, shelter: 0.5, swell_max: 2.0,
+     lat: -27.4560, lon: 153.1920, type: rockwall, tidal: true, tide_offset_min: 75, facing: 90, shelter: 0.5, swell_max: 2.0,
      species: [bream, flathead, tailor, trevally, jewfish, sharks]}
   - {id: wellington_point, name: Wellington Point jetty & sandbar, region: Redlands, state: QLD,
-     lat: -27.4740, lon: 153.2430, type: jetty, tidal: true, facing: 0, shelter: 0.6,
+     lat: -27.4740, lon: 153.2430, type: jetty, tidal: true, tide_offset_min: 75, facing: 0, shelter: 0.6,
      species: [bream, flathead, tailor, trevally]}
   - {id: cleveland_point, name: Cleveland Point, region: Redlands, state: QLD,
-     lat: -27.5240, lon: 153.2900, type: rock, tidal: true, facing: 70, shelter: 0.6, swell_max: 2.0,
+     lat: -27.5240, lon: 153.2900, type: rock, tidal: true, tide_offset_min: 75, facing: 70, shelter: 0.6, swell_max: 2.0,
      species: [bream, flathead, tailor, trevally, jewfish]}
 
   # ── Bribie Island / Pumicestone ────────────────────────────────────────────
@@ -130,36 +133,36 @@ spots:
      lat: -27.9550, lon: 153.4150, type: estuary, tidal: true, facing: 90, shelter: 0.9,
      marine: [-27.94, 153.44], species: [bream, flathead, trevally, tailor, jewfish]}
   - {id: gc_seaway, name: Gold Coast Seaway (The Spit walls), region: Gold Coast, state: QLD,
-     lat: -27.9380, lon: 153.4280, type: rockwall, tidal: true, facing: 90, shelter: 0.3, swell_max: 2.0,
+     lat: -27.9380, lon: 153.4280, type: rockwall, tidal: true, tide_offset_min: 30, facing: 90, shelter: 0.3, swell_max: 2.0,
      species: [tailor, trevally, jewfish, bream, flathead, kingfish, spanish_mackerel, sharks]}
   - {id: burleigh_headland, name: Burleigh Heads headland, region: Gold Coast, state: QLD,
-     lat: -28.0890, lon: 153.4580, type: rock, tidal: true, facing: 60, shelter: 0.1, swell_max: 1.5,
+     lat: -28.0890, lon: 153.4580, type: rock, tidal: true, tide_offset_min: 30, facing: 60, shelter: 0.1, swell_max: 1.5,
      species: [tailor, trevally, spanish_mackerel, jewfish, bream, kingfish]}
   - {id: tallebudgera_creek, name: Tallebudgera Creek mouth, region: Gold Coast, state: QLD,
-     lat: -28.1000, lon: 153.4630, type: estuary, tidal: true, facing: 60, shelter: 0.6,
+     lat: -28.1000, lon: 153.4630, type: estuary, tidal: true, tide_offset_min: 30, facing: 60, shelter: 0.6,
      species: [bream, flathead, trevally, tailor, jewfish]}
   - {id: currumbin_alley, name: Currumbin Alley / Currumbin Rock, region: Gold Coast, state: QLD,
-     lat: -28.1250, lon: 153.4850, type: rock, tidal: true, facing: 45, shelter: 0.2, swell_max: 1.5,
+     lat: -28.1250, lon: 153.4850, type: rock, tidal: true, tide_offset_min: 30, facing: 45, shelter: 0.2, swell_max: 1.5,
      species: [tailor, trevally, jewfish, bream, flathead, spanish_mackerel]}
   - {id: snapper_rocks, name: Snapper Rocks / Point Danger, region: Coolangatta, state: QLD,
-     lat: -28.1620, lon: 153.5500, type: rock, tidal: true, facing: 30, shelter: 0.1, swell_max: 1.5,
+     lat: -28.1620, lon: 153.5500, type: rock, tidal: true, tide_offset_min: 30, facing: 30, shelter: 0.1, swell_max: 1.5,
      species: [tailor, trevally, spanish_mackerel, kingfish, jewfish, bream, sharks]}
 
   # ── Tweed Coast (NSW) ──────────────────────────────────────────────────────
   - {id: tweed_river_walls, name: Tweed River mouth walls, region: Tweed, state: NSW,
-     lat: -28.1700, lon: 153.5530, type: rockwall, tidal: true, facing: 60, shelter: 0.2, swell_max: 2.0,
+     lat: -28.1700, lon: 153.5530, type: rockwall, tidal: true, tide_offset_min: 30, facing: 60, shelter: 0.2, swell_max: 2.0,
      species: [jewfish, tailor, trevally, bream, flathead, kingfish, spanish_mackerel, sharks]}
   - {id: fingal_head, name: Fingal Head, region: Tweed, state: NSW,
-     lat: -28.2000, lon: 153.5720, type: rock, tidal: true, facing: 90, shelter: 0.0, swell_max: 1.5,
+     lat: -28.2000, lon: 153.5720, type: rock, tidal: true, tide_offset_min: 30, facing: 90, shelter: 0.0, swell_max: 1.5,
      species: [tailor, trevally, jewfish, kingfish, spanish_mackerel, bream, sharks]}
   - {id: kingscliff_cudgen, name: Kingscliff / Cudgen Creek, region: Tweed, state: NSW,
-     lat: -28.2550, lon: 153.5800, type: beach, tidal: true, facing: 90, shelter: 0.2, swell_max: 2.5,
+     lat: -28.2550, lon: 153.5800, type: beach, tidal: true, tide_offset_min: 30, facing: 90, shelter: 0.2, swell_max: 2.5,
      species: [tailor, bream, flathead, jewfish, trevally, sharks]}
   - {id: norries_head, name: Norries Headland (Cabarita), region: Tweed, state: NSW,
-     lat: -28.3330, lon: 153.5680, type: rock, tidal: true, facing: 90, shelter: 0.0, swell_max: 1.5,
+     lat: -28.3330, lon: 153.5680, type: rock, tidal: true, tide_offset_min: 30, facing: 90, shelter: 0.0, swell_max: 1.5,
      species: [tailor, trevally, kingfish, spanish_mackerel, jewfish, bream]}
   - {id: brunswick_walls, name: Brunswick Heads walls, region: Byron Shire, state: NSW,
-     lat: -28.5380, lon: 153.5550, type: rockwall, tidal: true, facing: 90, shelter: 0.2, swell_max: 2.0,
+     lat: -28.5380, lon: 153.5550, type: rockwall, tidal: true, tide_offset_min: 30, facing: 90, shelter: 0.2, swell_max: 2.0,
      species: [jewfish, tailor, trevally, bream, flathead, sharks]}
 
   # ── Freshwater — Australian bass ───────────────────────────────────────────
