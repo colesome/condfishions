@@ -20,7 +20,7 @@ def make(start: str = "2026-07-08", past_days: int = 3, days: int = 7) -> dict:
     idx = pd.date_range(pd.Timestamp(start) - pd.Timedelta(days=past_days), periods=(past_days + days) * 24, freq="h")
     times = [t.strftime("%Y-%m-%dT%H:%M") for t in idx]
     hrs = [(t - idx[0]).total_seconds() / 3600 for t in idx]
-    cfg = load_config()
+    cfg = load_config(freshwater=True)  # every spot, so dam tests work while freshwater is switched off
     weather, marine = {}, {}
     for k, s in enumerate(cfg.spots):
         ph = k * 0.07
