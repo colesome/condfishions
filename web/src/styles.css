@@ -308,3 +308,4 @@ h1.brand { font-size: 26px; }
 .alt.part small { font-size: 10px; font-weight: 500; opacity: .85; white-space: nowrap; }
 .alt.part-on { box-shadow: inset 0 0 0 1.5px currentColor; }
 .run-note { margin: 6px 4px 0; font-size: 12px; }
+.card-weather { font-size: 13px; color: var(--ink); margin-top: 6px; }

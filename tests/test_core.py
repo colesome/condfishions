@@ -370,3 +370,28 @@ def test_archive_catches_up_when_the_morning_run_failed():
     assert s.params["created_at"] == "gte.2026-11-15T00:00:00+10:00" and s.params["archived"] == "eq.true"
     assert _archive_due(S([{"run_id": "20261115T0447"}]), midday) is False
     assert _archive_due(S([]), pd.Timestamp("2026-11-15T00:47", tz=TZ)) is False   # before the daily run is due
+
+
+def test_window_weather_is_shown_but_never_scored(cfg, payload):
+    from condfishions.scoring import window_weather
+    idx = pd.date_range("2026-11-15 06:00", periods=3, freq="h", tz=TZ)
+    def hours(speed, direction, gust, rain):
+        return pd.DataFrame({"wind_kmh": speed, "wind_dir": direction, "gust_kmh": gust, "rain_mm": rain}, index=idx)
+    pier = cfg.spot("shorncliffe_pier")      # faces east, shelter 0.6
+    rock = cfg.spot("point_lookout")         # open ocean, faces north-east
+    assert window_weather(pier, hours(8, 90, 12, 0))["comfort"] == "pleasant"
+    assert window_weather(rock, hours(18, 60, 26, 0))["comfort"] == "breezy"
+    assert window_weather(pier, hours(18, 60, 26, 0))["comfort"] == "pleasant"   # same wind, sheltered spot
+    assert window_weather(rock, hours(32, 60, 40, 0))["comfort"] == "windy"
+    assert window_weather(pier, hours(10, 90, 50, 0))["comfort"] == "windy"      # gusts alone
+    assert window_weather(pier, hours(8, 90, 12, 1.0))["comfort"] == "wet"       # 3 mm over the window
+    w = window_weather(rock, hours(32, [350, 10, 0], 40, 2.0))
+    assert w["comfort"] == "wet_windy" and w["win_wind_dir"] == "N" and w["win_wind_kmh"] == 32
+
+    # every row carries it, and identical conditions with different comfort keep the same rating
+    now = pd.Timestamp("2026-07-08T04:00", tz=TZ)
+    feats = build_features(pier, payload["weather"][pier.id], payload["marine"][pier.id], now)
+    rows = score_spot(cfg, pier, feats)
+    assert all(r["conditions"].get("comfort") for r in rows)
+    wet = feats.copy(); wet["rain_mm"] = 5.0
+    assert [r["score"] for r in score_spot(cfg, pier, wet)] == [r["score"] for r in rows]

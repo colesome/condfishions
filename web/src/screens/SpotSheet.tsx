@@ -3,6 +3,7 @@ import { TideChart } from "../components/TideChart";
 import { bandFor } from "../lib/bands";
 import { toBlocks } from "../lib/aggregate";
 import { api } from "../lib/api";
+import { COMFORT, comfortOf, weatherLine } from "../lib/comfort";
 import { fishDay, partOf } from "../lib/parts";
 import { fmtRange, fmtWhen, sameDay } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
@@ -128,7 +129,7 @@ export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishing
                       onClick={() => setOpen(open === b.block_start ? null : b.block_start)}>
                       <span>{partOf(b.block_start).label}</span>
                       <b>{b.no_go ? "✕" : Math.round(b.top_score)}</b>
-                      <small>{fmtRange(b.block_start, b.block_hours)}</small>
+                      <small>{fmtRange(b.block_start, b.block_hours)}{comfortEmoji(b.species[0]?.conditions)}</small>
                     </button>
                   );
                 })}
@@ -217,6 +218,7 @@ function BlockDetail({ b, spName, now, onTide }: {
       ) : (
         <>
           <div className="band-line" style={{ color: band.color }}>{band.emoji} {band.name} · {Math.round(b.top_score)}</div>
+          {weatherLine(b.species[0]?.conditions) && <div className="card-weather">{weatherLine(b.species[0]?.conditions)}</div>}
           {b.safety === "caution" && <span className="flag flag-warn">⚠️ {b.safety_text}</span>}
           <ul className="sp-list">
             {b.species.map((s) => {
@@ -242,6 +244,11 @@ function BlockDetail({ b, spName, now, onTide }: {
       )}
     </div>
   );
+}
+
+function comfortEmoji(c: Record<string, number | string | null> | undefined): string {
+  const k = comfortOf(c);
+  return k && k !== "pleasant" ? ` ${COMFORT[k].emoji}` : "";
 }
 
 const PHASE: Record<string, string> = {

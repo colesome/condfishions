@@ -7,7 +7,7 @@ from . import astro, tides
 from .config import Spot
 from .fetch import to_frame
 
-FEATURE_VERSION = "f1"
+FEATURE_VERSION = "f2"
 
 
 def build_features(spot: Spot, weather_payload: dict, marine_payload: dict | None,
@@ -21,7 +21,8 @@ def build_features(spot: Spot, weather_payload: dict, marine_payload: dict | Non
     df["cloud"] = w.get("cloud_cover")
     df["pressure"] = w.get("pressure_msl")
     df["pressure_trend_24h"] = df["pressure"] - df["pressure"].shift(24)
-    df["rain_72h"] = w.get("precipitation").fillna(0).rolling(72, min_periods=1).sum()
+    df["rain_mm"] = w.get("precipitation").fillna(0)
+    df["rain_72h"] = df["rain_mm"].rolling(72, min_periods=1).sum()
 
     extremes: list[tides.Extreme] = []
     if marine_payload is not None:

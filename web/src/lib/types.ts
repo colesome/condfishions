@@ -70,7 +70,8 @@ export interface SpeciesScore {
 export type PartId = "morning" | "day" | "evening" | "night";
 
 /** A window at a spot: the best few hours of one part of a day. */
-export interface WindowLite { block_start: string; block_hours: number; score: number; part?: PartId | null }
+export type Comfort = "pleasant" | "breezy" | "windy" | "wet" | "wet_windy";
+export interface WindowLite { block_start: string; block_hours: number; score: number; part?: PartId | null; comfort?: Comfort | null }
 
 /** One spot's best window in a date range, with every species' score in that window. */
 export interface SpotWindow {

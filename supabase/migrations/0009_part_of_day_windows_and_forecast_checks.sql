@@ -48,6 +48,7 @@ language sql stable security invoker as $$
            case when bool_or(f.safety = 'caution') then 'caution' else 'ok' end as safety,
            max(f.safety_text)                                              as safety_text,
            max(f.conditions ->> 'part')                                    as part,
+           max(f.conditions ->> 'comfort')                                 as comfort,
            jsonb_agg(jsonb_build_object(
              'species_id', f.species_id, 'score', f.score, 'p_success', f.p_success,
              'reasons', f.reasons, 'regulations', f.regulations, 'conditions', f.conditions
@@ -64,7 +65,7 @@ language sql stable security invoker as $$
   )
   select r.spot_id, r.block_start, r.block_hours, r.top_score, r.p_any, r.safety, r.safety_text, r.species,
          (select jsonb_agg(jsonb_build_object('block_start', w.block_start, 'block_hours', w.block_hours,
-                                              'score', w.top_score, 'part', w.part) order by w.block_start)
+                                              'score', w.top_score, 'part', w.part, 'comfort', w.comfort) order by w.block_start)
           from blocks w where w.spot_id = r.spot_id) as windows
   from ranked r
   where r.rn = 1

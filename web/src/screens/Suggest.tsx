@@ -1,5 +1,6 @@
 import { Chip } from "../components/ui";
 import { BANDS, bandFor } from "../lib/bands";
+import { COMFORT, weatherLine } from "../lib/comfort";
 import { partOf, splitWindows } from "../lib/parts";
 import { WINDOWS, ago, fmtRange, fmtShort, fmtWhen, type WindowId } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
@@ -96,6 +97,7 @@ export function Suggest(p: Props) {
                       {p.activeTripSpot === r.spot_id && <span className="live-dot"> · Fishing now</span>}
                     </div>
                     {why.length > 0 && <div className="card-why">{capitalise(why.join(", "))}</div>}
+                    {weatherLine(r.species[0]?.conditions) && <div className="card-weather">{weatherLine(r.species[0]?.conditions)}</div>}
                     <OtherTimes r={r} now={p.now} open={(b) => p.openSpot(r.spot_id, b)} />
                     {r.safety === "caution" && <span className="flag flag-warn">⚠️ {r.safety_text ?? "Caution"}</span>}
                     {regs.filter((g) => g.action !== "permit").map((g) => (
@@ -148,7 +150,8 @@ function OtherTimes({ r, now, open }: { r: SpotWindow; now: Date; open: (blockSt
         <div className="parts">
           {sameDay.map((w) => (
             <TimeChip key={w.block_start} on={w.block_start === r.block_start}
-              label={partOf(w.block_start).label} sub={fmtRange(w.block_start, w.block_hours)} score={w.score}
+              label={partOf(w.block_start).label} score={w.score}
+              sub={`${fmtRange(w.block_start, w.block_hours)}${w.comfort && w.comfort !== "pleasant" ? ` ${COMFORT[w.comfort].emoji}` : ""}`}
               onClick={() => open(w.block_start)} />
           ))}
         </div>

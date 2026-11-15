@@ -273,6 +273,41 @@ def reasons(contribs: list[tuple[str, float, str]], n_pos: int = 3, n_neg: int =
     return [{"factor": f, "points": p, "text": t} for f, p, t in pos + neg]
 
 
+def window_weather(spot: Spot, hours: pd.DataFrame) -> dict:
+    """How pleasant a window is to stand in. Shown beside the rating, never part of it.
+
+    Wind is the wind you would feel on the spot: shelter takes some off, and an offshore
+    wind (at your back) a little more. Levels: pleasant / breezy / windy, or wet / wet_windy
+    when 2 mm or more of rain falls in the window.
+    """
+    speed = hours["wind_kmh"].dropna()
+    if speed.empty:
+        return {}
+    mean_speed = float(speed.mean())
+    dirs = [float(d) for d in hours["wind_dir"].dropna()]
+    direction = None
+    if dirs:
+        direction = math.degrees(math.atan2(sum(math.sin(math.radians(d)) for d in dirs),
+                                            sum(math.cos(math.radians(d)) for d in dirs))) % 360
+    onshore = math.cos(math.radians(direction - spot.facing)) if direction is not None else 0.0
+    felt = mean_speed * (1 - 0.4 * spot.shelter) * (1.0 if onshore > 0.3 else 0.85)
+    gusts = hours["gust_kmh"].dropna()
+    gust = float(gusts.max()) if not gusts.empty else None
+    rain = float(hours["rain_mm"].sum()) if "rain_mm" in hours else 0.0
+    windy = felt >= 25 or (gust is not None and gust >= 45)
+    if rain >= 2:
+        level = "wet_windy" if windy else "wet"
+    else:
+        level = "windy" if windy else "breezy" if felt >= 15 else "pleasant"
+    return {
+        "comfort": level,
+        "win_wind_kmh": round(mean_speed), "win_wind_dir": compass(direction),
+        "win_gust_kmh": None if gust is None else round(gust),
+        "win_wind_side": "onshore" if onshore > 0.5 else "offshore" if onshore < -0.5 else "cross-shore",
+        "win_rain_mm": round(rain, 1),
+    }
+
+
 def part_of(t: pd.Timestamp) -> tuple[dt.date, str]:
     """(fishing day, part name) for an hour. Hours before 4 am count as the night before."""
     shifted = t - pd.Timedelta(hours=PARTS[0][1])
@@ -324,6 +359,7 @@ def score_spot(cfg: Config, spot: Spot, feats: pd.DataFrame, window_h: int = 3,
         safe = [c for c in cands if not any(unsafe[i] for i in c)]
         win = max(safe or cands, key=lambda c: sum(rating[i] for i in c))
         start = times[win[0]]
+        weather = window_weather(spot, feats.iloc[win])
         for sid in sids:
             sp = cfg.species[sid]
             hrs = [hourly[sid][i] for i in win]
@@ -346,7 +382,7 @@ def score_spot(cfg: Config, spot: Spot, feats: pd.DataFrame, window_h: int = 3,
                 "safety_text": next((h.safety_text for h in hrs if h.safety_text), None),
                 "reasons": reasons(best.contributions),
                 "regulations": [{"id": r.id, "action": r.action, "text": r.text} for r in regs],
-                "conditions": {**_conditions(r_best), "cond_score": cond, "part": part},
+                "conditions": {**_conditions(r_best), "cond_score": cond, "part": part, **weather},
                 "model_version": MODEL_VERSION,
             })
     return rows

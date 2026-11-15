@@ -1,3 +1,4 @@
+import { comfortOf } from "./comfort";
 import type { PartId, Score, SpotWindow } from "./types";
 
 const closed = (r: Score) => (r.regulations ?? []).some((g) => g.action === "closed");
@@ -48,6 +49,7 @@ export function bestPerSpot(rows: Score[]): SpotWindow[] {
     const windows = blocks.map((b) => ({
       block_start: b.block_start, block_hours: b.block_hours, score: b.top_score,
       part: (b.species[0]?.conditions?.part ?? null) as PartId | null,
+      comfort: comfortOf(b.species[0]?.conditions),
     }));
     return { ...best, windows };
   });
