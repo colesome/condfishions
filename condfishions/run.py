@@ -96,14 +96,18 @@ def _archive_rows(run_id: str, today: dt.date, feats_by_spot: dict[str, pd.DataF
 
 def _tide_rows(run_id: str, feats_by_spot: dict[str, pd.DataFrame], spots) -> list[dict]:
     rows = []
-    tidal = {s.id for s in spots if s.tidal}
+    tidal = {s.id: s.tide_offset_min for s in spots if s.tidal}
     for sid, f in feats_by_spot.items():
         if sid not in tidal or "sea_level" not in f or f["sea_level"].notna().sum() < 12:
             continue
         sl = f["sea_level"].dropna()
+        # Shift the curve by the spot's calibration offset so the Tide tab agrees with the
+        # tide phases used for scoring.
+        shift = pd.Timedelta(minutes=tidal[sid])
         rows.append({"spot_id": sid, "run_id": run_id,
-                     "series": [[t.isoformat(), round(float(v), 3)] for t, v in sl.items()],
-                     "extremes": f.attrs.get("tide_extremes", [])})
+                     "series": [[(t + shift).isoformat(), round(float(v), 3)] for t, v in sl.items()],
+                     "extremes": [[(pd.Timestamp(t) + shift).isoformat(), k, h]
+                                  for t, k, h in f.attrs.get("tide_extremes", [])]})
     return rows
 
 
