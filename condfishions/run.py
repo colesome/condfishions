@@ -22,6 +22,7 @@ from .fetch import fetch_all
 from .observed import backfill
 from .scoring import MODEL_VERSION, score_spot
 from .store import Store
+from .verify import circ_mean, run_checks
 
 
 def _git_sha() -> str:
@@ -58,6 +59,8 @@ def merge_user_spots(cfg, rows: list[dict]) -> list[str]:
         kw = {k: r.get(k) for k in _SPOT_FIELDS if r.get(k) is not None}
         kw.setdefault("region", "My spots")
         kw.setdefault("state", "")
+        if not cfg.freshwater and str(r.get("type", "")).startswith("fresh"):
+            continue
         kw["species"] = [x for x in (r.get("species") or []) if x in cfg.species]
         if not kw["species"]:
             warns.append(f"user spot {r['id']}: no known species")
@@ -85,6 +88,10 @@ def _archive_rows(run_id: str, today: dt.date, feats_by_spot: dict[str, pd.DataF
         blocks = []
         for start, g in nxt.groupby(nxt.index.floor("3h")):
             num = g.select_dtypes("number").mean().round(2).to_dict()
+            for col in ("wind_dir", "swell_dir"):  # a plain average of 350° and 10° would say south
+                if col in g:
+                    m = circ_mean([float(v) for v in g[col].dropna()])
+                    num[col] = None if m is None else round(m, 0)
             mid = g.iloc[len(g) // 2]
             blocks.append({"block_start": start.isoformat(), **{k: (None if pd.isna(v) else v) for k, v in num.items()},
                            "tide_phase": mid.get("tide_phase"), "light": mid.get("light")})
@@ -105,6 +112,40 @@ def _tide_rows(run_id: str, feats_by_spot: dict[str, pd.DataFrame], spots) -> li
                      "series": [[t.isoformat(), round(float(v), 3)] for t, v in sl.items()],
                      "extremes": f.attrs.get("tide_extremes", [])})
     return rows
+
+
+def _archive_due(store: Store, now: pd.Timestamp) -> bool:
+    """True when no run has archived yet today (local time), so this run should catch up.
+
+    The archive normally rides on the 04:47 run. If that run fails, the day's forecast
+    snapshot, trip backfill and forecast check would otherwise be lost.
+    """
+    if not store.enabled or now.hour < 4:
+        return False
+    try:
+        done = store.select("runs", {"select": "run_id", "archived": "eq.true", "limit": "1",
+                                     "created_at": f"gte.{now.normalize().isoformat()}"})
+    except RuntimeError as e:
+        print(f"warn: could not check today's archive ({e})")
+        return False
+    return not done
+
+
+def _remove_freshwater(store: Store) -> list[str]:
+    """Freshwater is switched off: clear dams, rivers and bass out of the database.
+
+    Anything you have logged a trip or a catch against is kept (the database refuses the
+    delete), and the app hides it.
+    """
+    notes = []
+    for table, params in (("spots", {"type": "like.fresh*", "source": "eq.config"}),
+                          ("species", {"id": "eq.bass"})):
+        try:
+            store.delete_where(table, params)
+        except RuntimeError as e:
+            if "23503" not in str(e):  # foreign key: still referenced by a trip — expected, keep it
+                notes.append(f"freshwater cleanup ({table}): {str(e)[:100]}")
+    return notes
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,28 +191,48 @@ def main(argv: list[str] | None = None) -> int:
             r["run_id"] = run_id
             rows.append(r)
 
+    archive = args.archive or _archive_due(store, now)
+    if archive and not args.archive:
+        print("today's archive is missing (the early-morning run failed or was skipped): catching up")
+
+    def save_run(archived: bool) -> None:
+        store.upsert("runs", [{"run_id": run_id, "created_at": now.isoformat(), "model_version": MODEL_VERSION,
+                               "feature_version": FEATURE_VERSION, "git_sha": _git_sha(),
+                               "n_scores": len(rows), "problems": problems, "archived": archived}],
+                     on_conflict="run_id")
+
     store.upsert("spots", _spot_rows(cfg), on_conflict="id")
     store.upsert("species", _species_rows(cfg), on_conflict="id")
-    # The run row must exist before scores/archive rows reference it (foreign key).
-    store.upsert("runs", [{"run_id": run_id, "created_at": now.isoformat(), "model_version": MODEL_VERSION,
-                           "feature_version": FEATURE_VERSION, "git_sha": _git_sha(),
-                           "n_scores": len(rows), "problems": problems, "archived": args.archive}],
-                 on_conflict="run_id")
+    # The run row must exist before scores/archive rows reference it (foreign key). It is only
+    # marked archived once the archive below has actually been written.
+    save_run(False)
     store.upsert("forecast_scores", rows, on_conflict="spot_id,species_id,block_start")
-    store.delete_before("forecast_scores", "block_start", (now - pd.Timedelta(hours=6)).isoformat())
+    # Windows move from run to run, so anything this run didn't write is out of date.
+    store.delete_where("forecast_scores", {"run_id": f"neq.{run_id}"})
+    store.delete_where("forecast_scores", {"run_id": "is.null"})
+    if not cfg.freshwater:
+        problems.extend(_remove_freshwater(store))
     try:
         store.upsert("tides", _tide_rows(run_id, feats_by_spot, cfg.spots), on_conflict="spot_id")
     except RuntimeError as e:  # tides table arrives with migration 0006
         problems.append(f"tides not saved: {str(e)[:120]}")
-    if args.archive:
+    if archive:
         try:
             n = backfill(cfg, store)
             print(f"backfilled measured conditions for {n} trips")
         except Exception as e:  # never let backfill break scoring
             print(f"warn: backfill failed: {e}")
+        try:  # compares yesterday's archive with measurements, so it runs before today's is written
+            checks, notes = run_checks(cfg, store, feats_by_spot, now)
+            store.upsert("forecast_checks", checks, on_conflict="check_date,kind,station")
+            print(f"forecast check: {len(checks)} station comparisons saved")
+            problems.extend(notes)
+        except Exception as e:  # table arrives with migration 0009; never let the check break scoring
+            problems.append(f"forecast check not saved: {str(e)[:120]}")
         store.upsert("forecast_archive", _archive_rows(run_id, now.date(), feats_by_spot),
                      on_conflict="run_date,spot_id")
         store.upload_gz("raw", f"{now:%Y/%m/%d}/{run_id}.json.gz", raw)
+    save_run(archive)
 
     print(f"run {run_id}: {len(rows)} scores across {len(feats_by_spot)} spots "
           f"({'supabase' if store.enabled else 'local ./out'})")

@@ -16,6 +16,10 @@
 #   marine    optional water point for the marine model if lat/lon is on land
 #   permit    SIP = Queensland Stocked Impoundment Permit required (18+)
 
+# Freshwater (dams, rivers, Australian bass) is switched off for now. The spots stay listed at the
+# bottom of this file; set this to true to bring them back.
+freshwater: false
+
 spots:
   # ── Brisbane / Moreton Bay (mainland) ──────────────────────────────────────
   - {id: shorncliffe_pier, name: Shorncliffe Pier, region: Moreton Bay, state: QLD,

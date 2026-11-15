@@ -15,8 +15,9 @@
 # weights      how many score points each factor can swing (+/-); missing = default
 
 defaults:
-  weights: {season: 22, light: 12, tide: 14, sst: 12, wind: 12, swell: 8,
-            rain: 6, spring: 5, pressure: 4, solunar: 3}
+  # v3: more weight on what changes through the day (tide, light), less on what doesn't (season, water temp)
+  weights: {season: 14, light: 14, tide: 22, sst: 8, wind: 14, swell: 8,
+            rain: 6, spring: 6, pressure: 4, solunar: 4}
 
 species:
   bream:
