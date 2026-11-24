@@ -87,17 +87,34 @@ full-screen like any app. Only your login can see data. Three tabs:
 - **Spot page** — *Times* (morning / day / evening / night per day, with the real hours; tap for every species' rating, reasons and
   conditions), *Tide* (the day's tide curve with highs/lows, the selected time highlighted and
   "now" marked), *Photos* (your catches here) and your record ("6 trips · fish on 4").
-  Big **Go fish here** button.
-- **Trips** — the trip in progress: **Log a catch** (photo, species, length, kept/released) or
+  Big **Go fish here** button, and on any upcoming time **📅 Book this time & add to calendar**.
+- **Booked slots** — booking saves what the app showed and opens the event for your phone's
+  Calendar (90-minute reminder, link back to the app). Every scoring run re-rates exactly those
+  hours; if the rating drops (8+ points or a band), swell/gusts trip the safety check, it turns
+  windy or wet, or waves come up, the slot shows what changed on the Trips tab (orange dot on the
+  tab) and, with trip alerts on, you get a notification. You're only notified again if it gets
+  worse or something new changes. Starting a trip in a booked slot links the two; a slot that
+  passes without a trip asks "Did you fish …? Yes — log it".
+- **Trips** — the trip in progress: **Log a catch** (photo, species, **bait or lure and which one**, length, kept/released) or
   **Finish — caught nothing**, then a 30-second review pre-filled from the forecast
   (wind, wind direction, sea, water clarity, bait, method, stars, notes). Works offline — logs
   queue on the phone and upload when you're back in signal. History of finished trips below — swipe a trip left to delete it and its photos.
   Photos can be taken with the camera or picked **from your library**. When logging a catch, **＋ Other…** lets you type any species; it's added to your list. Species you
   added can be removed (in that pop-up or Settings → Your species) as long as there are no photos of them.
-- **Settings** — home, saved places, travel range, use-my-location, refresh.
+  **＋ Past trip** logs a trip after you're home: spot, date, start and finish, then catches (with
+  the time caught) and the review. Tap any finished trip to see it, add or fix catches (fill in
+  bait/lure on old ones), review it, or **Edit** its spot and times. Logged-afterwards trips have
+  no "rating shown before"; editing a trip keeps the rating you saw and clears the measured
+  conditions, which are worked out again for the new time.
+- **Settings** — **Profile → My catches** (every fish with spot, bait/lure and photo; filter by
+  species or bait/lure; group by spot or by bait/lure), booked trip alerts, home, saved places,
+  travel range, use-my-location, refresh.
 
 Every trip stores the rating the app showed *before* you fished, your observations, and (overnight)
-measured conditions from Open-Meteo — the three things the learning layer will compare.
+measured conditions from Open-Meteo — the three things the learning layer will compare. The
+overnight step also rates the hours you actually fished from those measured conditions
+(`sessions.score_at_time`), for trips up to ~3 months old, including ones logged afterwards or
+edited.
 
 ## Setup (one-off, about 20 minutes)
 
@@ -117,6 +134,15 @@ measured conditions from Open-Meteo — the three things the learning layer will
    SQL editor. Then create a GitHub fine-grained token (*Settings → Developer settings →
    Fine-grained tokens*; only this repo; permission *Actions: Read and write*) and store it by
    running `select vault.create_secret('<your token>', 'github_token');` in the SQL editor.
+
+7. *(Optional) Booked trip alerts (iPhone notifications, iOS 16.4+, app on the Home Screen):*
+   run `pip install cryptography && python scripts/make_vapid_keys.py` and add the two lines it
+   prints as secrets `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (optionally `VAPID_SUBJECT`,
+   e.g. `mailto:you@example.com`). Re-run *Deploy phone app*, then in the app: Settings →
+   **Booked trip alerts** on. Without this, changes still show on the Trips tab.
+
+Migration `0010_plans_tackle_trip_edits.sql` adds booked slots, bait/lure on catches, the
+trip edit fields and the `calendar` storage bucket — run it before using those features.
 
 The scheduled scoring runs four times a day, which also keeps the free Supabase project from
 pausing.

@@ -309,3 +309,42 @@ h1.brand { font-size: 26px; }
 .alt.part-on { box-shadow: inset 0 0 0 1.5px currentColor; }
 .run-note { margin: 6px 4px 0; font-size: 12px; }
 .card-weather { font-size: 13px; color: var(--ink); margin-top: 6px; }
+
+/* ── booked slots, past trips, bait/lure, my catches ─────────────────────── */
+.plan-card { background: var(--card); border-radius: 16px; padding: 12px 14px; margin-top: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.04); border-left: 5px solid var(--great); }
+.plan-card small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.plan-warn { border-left-color: var(--fair); background: linear-gradient(160deg, #fff6e8 0%, #ffffff 60%); }
+.plan-focus { box-shadow: 0 0 0 2px var(--accent); }
+.plan-missed { border-left-color: var(--accent); }
+.plan-main { border: 0; background: none; padding: 0; text-align: left; font-size: 17px; flex: 1; }
+.plan-changes { list-style: none; padding: 0; margin: 8px 0 0; font-size: 14px; }
+.plan-changes li { padding: 2px 0; color: #9a5b00; }
+.plan-changes li.sev2 { color: #c4271e; font-weight: 600; }
+.plan-ok { font-size: 14px; color: var(--muted); margin: 8px 0 0; }
+.plan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.plan-actions .pick { background: var(--fill); padding: 8px 12px; font-size: 14px; }
+.plan-actions .pick-on { background: var(--accent); }
+.was { font-weight: 500; opacity: .55; margin-right: 5px; }
+.booked-line { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; font-size: 14px; color: #1f7a3a; font-weight: 600; }
+.booked-line .small-link { margin-top: 2px; }
+.tab-dot-warn { background: var(--fair) !important; }
+
+.tackle-seg { margin: 8px 0 0; }
+.tackle-input { width: 100%; margin-top: 10px; }
+.wide-input { width: auto; min-width: 150px; }
+.chev { color: #c7c7cc; font-size: 20px; flex: none; }
+.tags { display: flex; gap: 6px; margin: 6px 0 0; }
+.tag { background: var(--fill); color: var(--muted); border-radius: 999px; padding: 3px 9px; font-size: 12px; font-weight: 600; }
+.rating-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; }
+.rating-row small { display: block; color: var(--muted); }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 10px; }
+.stats div { background: var(--card); border-radius: 14px; padding: 12px; text-align: center; }
+.stats b { display: block; font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+.stats small { color: var(--muted); }
+.chips-row { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 0 4px; }
+.count-pill { flex: none; background: var(--fill); border-radius: 999px; padding: 3px 10px; font-weight: 700; font-size: 14px; }
+.row-main small + small { margin-top: 1px; }
+.sheet > .modal-input { width: 100%; margin-top: 12px; }
+.time-input { width: 130px; }
+.booked-line .small-link { align-self: flex-start; }

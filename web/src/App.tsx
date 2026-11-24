@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, configError } from "./lib/api";
 import { windowRange, type WindowId } from "./lib/time";
 import { travelMin } from "./lib/travel";
-import type { Origin, Run, Settings, Species, Spot, SpotWindow } from "./lib/types";
+import type { Origin, PlannedTrip, Run, Settings, Species, Spot, SpotWindow } from "./lib/types";
+import { addToCalendar } from "./lib/calendar";
+import { bookSlot, planNow, unseen } from "./lib/plans";
+import { MyCatches } from "./screens/MyCatches";
+import { TripPage } from "./screens/TripPage";
+import { shortName } from "./screens/Suggest";
 import { AddSpot } from "./screens/AddSpot";
 import { Login } from "./screens/Login";
 import { MapScreen } from "./screens/MapScreen";
@@ -24,9 +29,17 @@ const ls = {
   set: (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
 
+// Opened from a notification or calendar event: ?tab=trips&plan=<id>
+const launch = new URLSearchParams(location.search);
+if (launch.has("tab") || launch.has("plan")) history.replaceState(null, "", location.pathname);
+
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<Tab>("suggest");
+  const [tab, setTab] = useState<Tab>(launch.get("tab") === "trips" || launch.has("plan") ? "trips" : "suggest");
+  const [plans, setPlans] = useState<PlannedTrip[]>([]);
+  const [focusPlan] = useState<string | null>(launch.get("plan"));
+  const [showCatches, setShowCatches] = useState(false);
+  const [catchTrip, setCatchTrip] = useState<string | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
   const [species, setSpecies] = useState<Species[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -68,6 +81,16 @@ export default function App() {
     }
   }, []);
   useEffect(() => { if (authed) loadBase(); }, [authed, loadBase]);
+
+  const loadPlans = useCallback(() => { api.plans().then(setPlans).catch(() => undefined); }, []);
+  useEffect(() => {
+    if (!authed) return;
+    loadPlans();
+    const onShow = () => { if (!document.hidden) loadPlans(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
+  }, [authed, loadPlans]);
+  useEffect(() => { if (tab === "trips" && authed) loadPlans(); }, [tab, authed, loadPlans]);
 
   const setUseGps = (v: boolean) => { setUseGpsState(v); ls.set("useGps", v); };
   useEffect(() => {
@@ -124,11 +147,25 @@ export default function App() {
 
   const sheetSpot = openSpot ? spotMap.get(openSpot.id) : undefined;
 
-  async function goFish(spot: Spot, scoreShown: number | null) {
+  async function goFish(spot: Spot, scoreShown: number | null, planId: string | null = planNow(plans, spot.id)?.id ?? null) {
     if (active && active.trip.spot_id !== spot.id && !confirm(`You're already fishing at ${active.spot_name}. Start a new trip here instead? (The other one won't be saved.)`)) return;
-    setActive(await startTrip(spot, scoreShown));
+    setActive(await startTrip(spot, scoreShown, planId));
     setOpenSpot(null); setShowMap(false); setTab("trips");
+    if (planId) setPlans((ps) => ps.map((p) => p.id === planId ? { ...p, status: "done" } : p));
   }
+
+  const speciesNames = (sp: Spot) => sp.species.map((id) => shortName(species.find((x) => x.id === id), id)).join(", ");
+  const calendar = (p: PlannedTrip) => { const sp = spotMap.get(p.spot_id); if (sp) void addToCalendar(p, sp, speciesNames(sp)); };
+  async function book(sp: Spot, b: Parameters<typeof bookSlot>[1]) {
+    try {
+      const plan = await bookSlot(sp, b);
+      setPlans((ps) => [...ps, plan].sort((x, y) => x.block_start.localeCompare(y.block_start)));
+      await addToCalendar(plan, sp, speciesNames(sp));
+    } catch (e) {
+      alert(`Couldn't book — are you online? (${(e as Error).message})`);
+    }
+  }
+  const tripsBadge = !!active || plans.some(unseen);
 
   return (
     <div className="app">
@@ -143,7 +180,8 @@ export default function App() {
         )}
         {tab === "trips" && (
           <Trips active={active} setActive={setActive} spots={spotMap} species={species} pending={pending}
-            openSpot={(id) => setOpenSpot({ id })}
+            openSpot={(id) => setOpenSpot({ id })} plans={plans} reloadPlans={loadPlans} focusPlan={focusPlan}
+            goFish={(sp, score, planId) => goFish(sp, score, planId)}
             onSpeciesAdded={(sp) => setSpecies((xs) => xs.some((x) => x.id === sp.id) ? xs : [...xs, sp])}
             onSpeciesRemoved={(id) => setSpecies((xs) => xs.filter((x) => x.id !== id))} />
         )}
@@ -152,18 +190,30 @@ export default function App() {
             gpsError={gpsError} lastRun={lastRun} now={now} inRangeCount={travel.size}
             onSignOut={async () => { await api.signOut(); setAuthed(false); }}
             userSpecies={species.filter((x) => x.id.startsWith("user_"))}
-            onSpeciesRemoved={(id) => setSpecies((xs) => xs.filter((x) => x.id !== id))} />
+            onSpeciesRemoved={(id) => setSpecies((xs) => xs.filter((x) => x.id !== id))}
+            openCatches={() => setShowCatches(true)} />
         )}
       </main>
 
       <nav className="tabs">
         <button className={tab === "suggest" ? "on" : ""} onClick={() => setTab("suggest")}><IconFish />Fish</button>
         <button className={tab === "trips" ? "on" : ""} onClick={() => setTab("trips")}>
-          <span className="tab-icon"><IconTrips />{active && <i className="tab-dot" />}</span>Trips
+          <span className="tab-icon"><IconTrips />{tripsBadge && <i className={`tab-dot ${!active ? "tab-dot-warn" : ""}`} />}</span>Trips
         </button>
         <button className={tab === "places" ? "on" : ""} onClick={() => setTab("places")}><IconGear />Settings</button>
       </nav>
 
+      {showCatches && (
+        <MyCatches spots={spotMap} species={species} onClose={() => setShowCatches(false)}
+          openSpot={(id) => setOpenSpot({ id })} openTrip={setCatchTrip} />
+      )}
+      {catchTrip && (
+        <TripPage tripId={catchTrip} spots={spotMap} species={species} recentSpots={[]}
+          onClose={() => setCatchTrip(null)} onDeleted={() => { setCatchTrip(null); setShowCatches(false); }}
+          openSpot={(id) => setOpenSpot({ id })}
+          onSpeciesAdded={(sp) => setSpecies((xs) => xs.some((x) => x.id === sp.id) ? xs : [...xs, sp])}
+          onSpeciesRemoved={(id) => setSpecies((xs) => xs.filter((x) => x.id !== id))} />
+      )}
       {showMap && (
         <div className="sheet sheet-map">
           <div className="map-back"><button className="back" onClick={() => setShowMap(false)}><span>‹</span>Back</button></div>
@@ -176,6 +226,7 @@ export default function App() {
           travelMin={travel.get(sheetSpot.id) ?? travelMin(origin.lat, origin.lon, sheetSpot)} now={now}
           fishingHere={active?.trip.spot_id === sheetSpot.id}
           onGoFish={(score) => goFish(sheetSpot, score)}
+          plans={plans} onBook={(b) => book(sheetSpot, b)} onCalendar={calendar}
           onClose={() => { if (active?.trip.spot_id === sheetSpot.id && tab !== "trips") setTab("trips"); setOpenSpot(null); }}
           onDeleted={() => { setOpenSpot(null); loadBase(); }} />
       )}

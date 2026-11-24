@@ -1,6 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { bestPerSpot } from "./aggregate";
-import type { Run, Score, Settings, Species, Spot, SpotPhoto, SpotWindow, Tide, TripSummary } from "./types";
+import type {
+  CatchRecord, PlannedTrip, Run, Score, Settings, Species, Spot, SpotPhoto, SpotWindow, Tide, TripCatch, TripDetail, TripSummary,
+} from "./types";
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -32,7 +34,17 @@ export interface Api {
   speciesUsage(id: string): Promise<{ photos: number; catches: number }>;
   removeSpecies(id: string): Promise<void>;
   deleteTrip(id: string): Promise<void>;
+  deleteWhere(table: string, match: Record<string, string>): Promise<void>;
+  tripDetail(id: string): Promise<TripDetail | null>;
+  allCatches(): Promise<CatchRecord[]>;
+  plans(): Promise<PlannedTrip[]>;
+  /** Upload a booking's .ics and return a link that opens it in Calendar (null if that isn't possible). */
+  calendarLink(path: string, ics: string): Promise<string | null>;
+  savePushSubscription(endpoint: string, keys: Record<string, string>): Promise<void>;
+  removePushSubscription(endpoint: string): Promise<void>;
 }
+
+const CATCH_COLS = "id,species_id,count,max_length_cm,caught_at,method,tackle,released";
 
 export function speciesFromName(name: string): Species {
   const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
@@ -99,7 +111,7 @@ class SupabaseApi implements Api {
     return rows[0] ?? null;
   }
   async trips(spotId?: string) {
-    let q = this.sb.from("sessions").select("*, catches(species_id,count)").order("start_ts", { ascending: false }).limit(60);
+    let q = this.sb.from("sessions").select(`*, catches(${CATCH_COLS})`).order("start_ts", { ascending: false }).limit(60);
     if (spotId) q = q.eq("spot_id", spotId);
     return this.q<TripSummary[]>(q);
   }
@@ -161,6 +173,60 @@ class SupabaseApi implements Api {
     const { error } = await this.sb.storage.from("photos").upload(path, blob, { upsert: true, contentType: "image/jpeg" });
     if (error) throw new Error(error.message);
   }
+  async deleteWhere(table: string, match: Record<string, string>) {
+    if (!Object.keys(match).length) throw new Error("deleteWhere needs a filter");
+    await this.q(this.sb.from(table).delete().match(match));
+  }
+  private async signed(paths: string[]): Promise<Map<string, string>> {
+    if (!paths.length) return new Map();
+    const { data } = await this.sb.storage.from("photos").createSignedUrls(paths, 3600);
+    return new Map((data ?? []).filter((d) => d.signedUrl).map((d) => [d.path ?? "", d.signedUrl as string]));
+  }
+  async tripDetail(id: string) {
+    type Row = TripSummary & { photos: { catch_id: string | null; storage_path: string }[]; observed_conditions: { source: string; vals: Record<string, unknown> }[] };
+    const rows = await this.q<Row[]>(this.sb.from("sessions")
+      .select(`*, catches(${CATCH_COLS}), photos(catch_id,storage_path), observed_conditions(source,vals)`).eq("id", id));
+    const r = rows[0];
+    if (!r) return null;
+    const urls = await this.signed(r.photos.map((p) => p.storage_path));
+    const { photos, observed_conditions, ...trip } = r;
+    return {
+      ...trip, catches: trip.catches.filter((c) => c.count > 0),
+      photos: photos.filter((p) => urls.get(p.storage_path)).map((p) => ({ catch_id: p.catch_id, url: urls.get(p.storage_path)! })),
+      observed: observed_conditions,
+    };
+  }
+  async allCatches() {
+    type Row = TripCatch & { session_id: string; sessions: { spot_id: string; start_ts: string }; photos: { storage_path: string }[] };
+    const { data, error } = await this.sb.from("catches")
+      .select(`${CATCH_COLS}, session_id, sessions!inner(spot_id,start_ts), photos(storage_path)`)
+      .gt("count", 0).order("caught_at", { ascending: false }).limit(1000);
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as unknown as Row[];
+    const urls = await this.signed(rows.flatMap((r) => r.photos.slice(0, 1).map((p) => p.storage_path)));
+    return rows.map(({ sessions, photos, ...c }) => ({
+      ...c, spot_id: sessions.spot_id, start_ts: sessions.start_ts,
+      photo_url: photos[0] ? urls.get(photos[0].storage_path) ?? null : null,
+    }));
+  }
+  async plans() {
+    const since = new Date(Date.now() - 36 * 3600_000).toISOString();
+    return this.q<PlannedTrip[]>(this.sb.from("planned_trips").select("*")
+      .in("status", ["planned", "past"]).gte("block_start", since).order("block_start"));
+  }
+  async calendarLink(path: string, ics: string) {
+    const up = await this.sb.storage.from("calendar")
+      .upload(path, new Blob([ics], { type: "text/calendar" }), { upsert: true, contentType: "text/calendar" });
+    if (up.error) return null;
+    const { data } = await this.sb.storage.from("calendar").createSignedUrl(path, 7 * 24 * 3600);
+    return data?.signedUrl ?? null;
+  }
+  async savePushSubscription(endpoint: string, keys: Record<string, string>) {
+    await this.q(this.sb.from("push_subscriptions").upsert({ endpoint, keys }, { onConflict: "endpoint" }));
+  }
+  async removePushSubscription(endpoint: string) {
+    await this.q(this.sb.from("push_subscriptions").delete().eq("endpoint", endpoint));
+  }
 }
 
 // ── Demo (no Supabase configured): reads ./demo/*.json made from a fixture run ──
@@ -211,7 +277,7 @@ class DemoApi implements Api {
   }
   private table<T>(name: string): T[] { return JSON.parse(localStorage.getItem(`demo_db_${name}`) ?? "[]"); }
   async trips(spotId?: string) {
-    const catches = this.table<{ session_id: string; species_id: string; count: number }>("catches");
+    const catches = this.table<TripCatch & { session_id: string }>("catches");
     return this.table<TripSummary>("sessions")
       .filter((t) => !spotId || t.spot_id === spotId)
       .map((t) => ({ ...t, catches: catches.filter((c) => c.session_id === t.id) }))
@@ -263,6 +329,47 @@ class DemoApi implements Api {
       localStorage.setItem(`demo_db_${t}`, JSON.stringify(this.table<Record<string, unknown>>(t).filter((r) => r[key] !== id)));
     }
   }
+  async deleteWhere(table: string, match: Record<string, string>) {
+    const keep = this.table<Record<string, unknown>>(table).filter((r) => !Object.entries(match).every(([k, v]) => String(r[k]) === v));
+    localStorage.setItem(`demo_db_${table}`, JSON.stringify(keep));
+  }
+  private async photoUrl(path: string): Promise<string | null> {
+    const { getBlob } = await import("./queue");
+    const b = await getBlob(path);
+    return b ? URL_.createObjectURL(b) : null;
+  }
+  async tripDetail(id: string) {
+    const t = (await this.trips()).find((x) => x.id === id);
+    if (!t) return null;
+    const photos = [];
+    for (const ph of this.table<{ session_id: string; catch_id: string | null; storage_path: string }>("photos").filter((p) => p.session_id === id)) {
+      const url = await this.photoUrl(ph.storage_path);
+      if (url) photos.push({ catch_id: ph.catch_id, url });
+    }
+    const observed = this.table<{ session_id: string; source: string; vals: Record<string, unknown> }>("observed_conditions").filter((o) => o.session_id === id);
+    return { ...t, catches: t.catches.filter((c) => c.count > 0), photos, observed };
+  }
+  async allCatches() {
+    const sessions = new Map(this.table<TripSummary>("sessions").map((s) => [s.id, s]));
+    const photos = this.table<{ catch_id: string | null; storage_path: string }>("photos");
+    const out: CatchRecord[] = [];
+    for (const c of this.table<TripCatch & { session_id: string }>("catches")) {
+      const s = sessions.get(c.session_id);
+      if (!s || c.count <= 0) continue;
+      const ph = photos.find((p) => p.catch_id === c.id);
+      out.push({ ...c, spot_id: s.spot_id, start_ts: s.start_ts, photo_url: ph ? await this.photoUrl(ph.storage_path) : null });
+    }
+    return out.sort((a, b) => (b.caught_at ?? b.start_ts).localeCompare(a.caught_at ?? a.start_ts));
+  }
+  async plans() {
+    const since = this.nowTs.getTime() - 36 * 3600_000;
+    return this.table<PlannedTrip>("planned_trips")
+      .filter((p) => (p.status === "planned" || p.status === "past") && new Date(p.block_start).getTime() >= since)
+      .sort((a, b) => a.block_start.localeCompare(b.block_start));
+  }
+  async calendarLink() { return null; }
+  async savePushSubscription() {}
+  async removePushSubscription() {}
 }
 
 const URL_ = globalThis.URL;

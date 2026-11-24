@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { disablePush, enablePush, pushState, type PushState } from "../lib/push";
 import { api } from "../lib/api";
 import { confirmRemoveSpecies } from "../lib/speciesActions";
 import { getPosition } from "../lib/geo";
@@ -18,7 +19,16 @@ interface Props {
   onSignOut: () => void;
   userSpecies: Species[];
   onSpeciesRemoved: (id: string) => void;
+  openCatches: () => void;
 }
+
+const PUSH_NOTE: Record<PushState, string> = {
+  on: "You'll get a notification if a booked trip's conditions get worse.",
+  off: "Get a notification if a booked trip's conditions get worse.",
+  denied: "Notifications are blocked — turn them on in iPhone Settings → Notifications → CondFishions.",
+  unsupported: "Needs the app added to your Home Screen (iOS 16.4 or later). Changes still show on the Trips tab.",
+  not_configured: "Alerts aren't set up yet (see README → Trip alerts). Changes still show on the Trips tab.",
+};
 
 interface Hit { display_name: string; lat: string; lon: string }
 
@@ -31,6 +41,11 @@ export function Places(p: Props) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
+  const [push, setPush] = useState<PushState | null>(null);
+  useEffect(() => { pushState().then(setPush).catch(() => setPush("unsupported")); }, []);
+  async function togglePush(on: boolean) {
+    try { setPush(on ? await enablePush() : await disablePush()); } catch (e) { setMsg(`Couldn't change alerts: ${(e as Error).message}`); }
+  }
 
   const isActive = (pl: Place) => pl.name === s.home_name && pl.lat === s.home_lat && pl.lon === s.home_lon;
 
@@ -89,6 +104,22 @@ export function Places(p: Props) {
     <div className="screen">
       <div className="title-row"><h1>Settings</h1></div>
 
+      <div className="group-title" style={{ marginTop: 4 }}>Profile</div>
+      <div className="group">
+        <button className="row" onClick={p.openCatches}>
+          <span className="row-main">🐟 My catches<small>Every fish, where you caught it and on what</small></span>
+          <span className="chev">›</span>
+        </button>
+        {push && (
+          <label className="row">
+            <div className="row-main">🔔 Booked trip alerts<small>{PUSH_NOTE[push]}</small></div>
+            <input className="switch" type="checkbox" checked={push === "on"} disabled={push !== "on" && push !== "off"}
+              onChange={(e) => togglePush(e.target.checked)} />
+          </label>
+        )}
+      </div>
+
+      <div className="group-title">Location</div>
       <div className="group">
         <label className="row">
           <div className="row-main">Use my current location<small>For travelling — not saved</small></div>

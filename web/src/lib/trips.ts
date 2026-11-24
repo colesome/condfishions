@@ -1,6 +1,7 @@
 import { enqueue, putBlob } from "./queue";
 import { getPosition } from "./geo";
-import type { Catch, Spot, Trip } from "./types";
+import type { Catch, Spot, TackleKind, Trip, TripCatch } from "./types";
+import { rememberTackle } from "./tackle";
 
 /** The trip in progress lives on the phone (works offline) and is mirrored to the server. */
 export interface LocalCatch extends Catch { photo_key: string | null; released: boolean }
@@ -16,17 +17,20 @@ function saveActive(a: ActiveTrip | null) {
   if (a) localStorage.setItem(KEY, JSON.stringify(a)); else localStorage.removeItem(KEY);
 }
 
-export async function startTrip(spot: Spot, scoreShown: number | null, modelVersion = "baseline_v2"): Promise<ActiveTrip> {
+export async function startTrip(spot: Spot, scoreShown: number | null, plannedTripId: string | null = null,
+  modelVersion = "baseline_v3"): Promise<ActiveTrip> {
   const id = uuid();
   const trip: Trip = {
     id, client_id: id, spot_id: spot.id, start_ts: new Date().toISOString(), end_ts: null,
     targeted_species: spot.species, method: null, why_went: "suggested",
     score_shown: scoreShown, model_version_shown: modelVersion,
     checkin_lat: null, checkin_lon: null, skunked: null, notes: null,
+    ...(plannedTripId ? { planned_trip_id: plannedTripId } : {}),
   };
   const active: ActiveTrip = { trip, spot_name: spot.name, catches: [] };
   saveActive(active);
   await enqueue({ kind: "upsert", table: "sessions", row: { ...trip } });
+  if (plannedTripId) await enqueue({ kind: "update", table: "planned_trips", id: plannedTripId, patch: { status: "done", session_id: id } });
   getPosition().then(async (g) => { // best effort GPS check-in
     const a = loadActive();
     if (!a || a.trip.id !== id) return;
@@ -37,26 +41,89 @@ export async function startTrip(spot: Spot, scoreShown: number | null, modelVers
   return active;
 }
 
-export async function logCatch(a: ActiveTrip, c: { species_id: string; length: number | null; released: boolean; photo: Blob | null }): Promise<ActiveTrip> {
+export interface NewCatch {
+  species_id: string; length: number | null; released: boolean; photo: Blob | null;
+  method: TackleKind | null; tackle: string | null; caught_at?: string;
+}
+
+/** Save one catch against any trip (running or finished). Works offline. */
+export async function addCatch(sessionId: string, c: NewCatch): Promise<LocalCatch> {
   const id = uuid();
-  const now = new Date().toISOString();
+  const at = c.caught_at ?? new Date().toISOString();
   const row: Catch = {
-    id, client_id: id, session_id: a.trip.id, species_id: c.species_id, count: 1,
-    max_length_cm: c.length, caught_at: now,
+    id, client_id: id, session_id: sessionId, species_id: c.species_id, count: 1,
+    max_length_cm: c.length, caught_at: at, method: c.method, tackle: c.tackle?.trim() || null,
   };
   let photo_key: string | null = null;
   await enqueue({ kind: "upsert", table: "catches", row: { ...row, kept: c.released ? 0 : 1, released: c.released ? 1 : 0 } });
   if (c.photo) {
-    photo_key = `${a.trip.id}/${id}.jpg`;
+    photo_key = `${sessionId}/${id}.jpg`;
     await putBlob(photo_key, c.photo);
     await enqueue({ kind: "photo", path: photo_key });
     await enqueue({ kind: "upsert", table: "photos", row: {
-      id: uuid(), session_id: a.trip.id, catch_id: id, storage_path: photo_key, taken_at: now,
+      id: uuid(), session_id: sessionId, catch_id: id, storage_path: photo_key, taken_at: at,
     } });
   }
-  const next = { ...a, catches: [...a.catches, { ...row, photo_key, released: c.released }] };
+  if (c.method && c.tackle) rememberTackle(c.method, c.tackle);
+  return { ...row, photo_key, released: c.released };
+}
+
+export async function logCatch(a: ActiveTrip, c: NewCatch): Promise<ActiveTrip> {
+  const saved = await addCatch(a.trip.id, c);
+  const next = { ...a, catches: [...a.catches, saved] };
   saveActive(next);
   return next;
+}
+
+/** Change bait/lure, length or kept/released on a saved catch. */
+export async function updateCatch(id: string, patch: { method?: TackleKind | null; tackle?: string | null; max_length_cm?: number | null; released?: boolean; species_id?: string }) {
+  const p: Record<string, unknown> = { ...patch };
+  if (patch.released !== undefined) { p.released = patch.released ? 1 : 0; p.kept = patch.released ? 0 : 1; }
+  if (patch.method && patch.tackle) rememberTackle(patch.method, patch.tackle);
+  await enqueue({ kind: "update", table: "catches", id, patch: p });
+}
+
+/** Remove a catch from a finished trip (kept as count 0, like "Undo last catch"). */
+export async function deleteCatch(id: string) {
+  await enqueue({ kind: "update", table: "catches", id, patch: { count: 0 } });
+}
+
+export async function setSkunked(sessionId: string, fish: number) {
+  await enqueue({ kind: "update", table: "sessions", id: sessionId, patch: { skunked: fish === 0, updated_at: new Date().toISOString() } });
+}
+
+/**
+ * Log a trip after you're home. No rating is recorded as "shown" (you didn't see one before
+ * going); the scorer works out the rating for those hours overnight from measured conditions.
+ */
+export async function createPastTrip(spot: Spot, start: Date, end: Date): Promise<Trip> {
+  const id = uuid();
+  const trip: Trip = {
+    id, client_id: id, spot_id: spot.id, start_ts: start.toISOString(), end_ts: end.toISOString(),
+    targeted_species: spot.species, method: null, why_went: null, score_shown: null, model_version_shown: null,
+    checkin_lat: null, checkin_lon: null, skunked: true, notes: null, logged_after: true,
+  };
+  await enqueue({ kind: "upsert", table: "sessions", row: { ...trip } });
+  return trip;
+}
+
+/**
+ * Change a finished trip's spot or times. Its measured conditions and hindsight rating are
+ * cleared so the scorer works them out again for the new time (on the next early-morning run).
+ */
+export async function editTrip(id: string, e: { spot_id: string; start: Date; end: Date }, catches: TripCatch[]) {
+  const now = new Date().toISOString();
+  await enqueue({ kind: "update", table: "sessions", id, patch: {
+    spot_id: e.spot_id, start_ts: e.start.toISOString(), end_ts: e.end.toISOString(),
+    times_edited_at: now, score_at_time: null, score_at_time_version: null, updated_at: now,
+  } });
+  await enqueue({ kind: "delete", table: "observed_conditions", match: { session_id: id, source: "archive" } });
+  for (const c of catches) { // keep catch times inside the trip
+    if (!c.caught_at) continue;
+    const t = new Date(c.caught_at).getTime();
+    const clamped = Math.min(Math.max(t, e.start.getTime()), e.end.getTime());
+    if (clamped !== t) await enqueue({ kind: "update", table: "catches", id: c.id, patch: { caught_at: new Date(clamped).toISOString() } });
+  }
 }
 
 export async function removeLastCatch(a: ActiveTrip): Promise<ActiveTrip> {
@@ -82,15 +149,22 @@ export interface Review {
 
 export async function finishTrip(a: ActiveTrip, r: Review, prefilledFrom: Record<string, unknown> | null): Promise<void> {
   const end = new Date().toISOString();
-  await enqueue({ kind: "update", table: "sessions", id: a.trip.id, patch: {
-    end_ts: end, skunked: a.catches.length === 0, method: r.method, notes: r.notes || null, updated_at: end,
+  await enqueue({ kind: "update", table: "sessions", id: a.trip.id, patch: { end_ts: end } });
+  await saveReview(a.trip.id, a.catches.length, r, prefilledFrom);
+  saveActive(null);
+}
+
+/** The "How was it?" answers, for a trip just finished or one logged afterwards. */
+export async function saveReview(sessionId: string, fish: number, r: Review, prefilledFrom: Record<string, unknown> | null): Promise<void> {
+  const now = new Date().toISOString();
+  await enqueue({ kind: "update", table: "sessions", id: sessionId, patch: {
+    skunked: fish === 0, method: r.method, notes: r.notes || null, updated_at: now,
   } });
   await enqueue({ kind: "upsert", table: "observed_conditions", row: {
-    id: uuid(), session_id: a.trip.id, source: "angler",
+    id: uuid(), session_id: sessionId, source: "angler",
     vals: { ...r, notes: undefined, forecast_used_for_prefill: prefilledFrom },
   } });
   localStorage.setItem("lastMethod", r.method);
-  saveActive(null);
 }
 
 export function cancelTrip(): void {

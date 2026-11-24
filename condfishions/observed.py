@@ -11,6 +11,9 @@ import pandas as pd
 
 from .config import Config
 from .fetch import FORECAST_URL, MARINE_URL, MARINE_VARS, WEATHER_VARS, _get, to_frame
+from .features import build_features
+from .plans import rate_period
+from .scoring import MODEL_VERSION
 from .store import Store
 
 
@@ -47,7 +50,16 @@ def summarise(weather: pd.DataFrame, marine: pd.DataFrame | None, start: pd.Time
     return {k: v for k, v in out.items() if v is not None and not (isinstance(v, float) and math.isnan(v))}
 
 
-def backfill(cfg: Config, store: Store, days: int = 4) -> int:
+MAX_PAST_DAYS = 90  # Open-Meteo keeps about three months of recent past at the forecast endpoint
+
+
+def backfill(cfg: Config, store: Store, days: int = MAX_PAST_DAYS, now: pd.Timestamp | None = None) -> int:
+    """Measured conditions and the hindsight rating for finished trips that don't have them yet.
+
+    Covers trips logged after the fact and trips whose times were edited (the app removes the
+    old 'archive' observation), as long as the trip is within the last ~3 months.
+    """
+    now = now or pd.Timestamp.now(tz="Australia/Brisbane")
     sessions = store.sessions_needing_backfill(days)
     n = 0
     for s in sessions:
@@ -57,20 +69,50 @@ def backfill(cfg: Config, store: Store, days: int = 4) -> int:
             continue
         start = pd.Timestamp(s["start_ts"]).tz_convert("Australia/Brisbane")
         end = pd.Timestamp(s["end_ts"]).tz_convert("Australia/Brisbane")
+        if end > now or end <= start:
+            continue
+        past = min(92, int((now - start).total_seconds() // 86400) + 4)  # +3 days for 72 h rain, pressure trend
         base = {"latitude": spot.lat, "longitude": spot.lon, "timezone": "Australia/Brisbane",
-                "past_days": days + 1, "forecast_days": 1}
-        weather = to_frame(_get(FORECAST_URL, {**base, "hourly": ",".join(WEATHER_VARS),
-                                               "wind_speed_unit": "kmh"})[0])
-        marine = None
-        if not spot.fresh:
-            mlat, mlon = spot.marine_point
-            try:
-                marine = to_frame(_get(MARINE_URL, {**base, "latitude": mlat, "longitude": mlon,
-                                                    "hourly": ",".join(MARINE_VARS)})[0])
-            except RuntimeError:
-                marine = None
+                "past_days": past, "forecast_days": 1}
+        try:
+            wpay = _get(FORECAST_URL, {**base, "hourly": ",".join(WEATHER_VARS), "wind_speed_unit": "kmh"})[0]
+            mpay = None
+            if not spot.fresh:
+                mlat, mlon = spot.marine_point
+                try:
+                    mpay = _get(MARINE_URL, {**base, "latitude": mlat, "longitude": mlon,
+                                             "hourly": ",".join(MARINE_VARS)})[0]
+                except RuntimeError:
+                    mpay = None
+        except RuntimeError as e:
+            print(f"warn: backfill {s['id']}: {e}")
+            continue
+        weather, marine = to_frame(wpay), (to_frame(mpay) if mpay else None)
         vals = summarise(weather, marine, start, end)
-        if vals:
-            store.insert("observed_conditions", [{"session_id": s["id"], "source": "archive", "vals": vals}])
-            n += 1
+        if not vals:
+            continue
+        rated = rate_trip(cfg, spot, wpay, mpay, start, end)
+        if rated:
+            vals.update({"score_at_time": rated["score"], "safety_at_time": rated["safety"],
+                         "tide_phase": rated["conditions"].get("tide_phase"),
+                         "light": rated["conditions"].get("light"), "comfort": rated["conditions"].get("comfort")})
+        store.insert("observed_conditions", [{"session_id": s["id"], "source": "archive", "vals": vals}])
+        if rated:
+            try:
+                store.update("sessions", {"id": f"eq.{s['id']}"},
+                             {"score_at_time": rated["score"], "score_at_time_version": MODEL_VERSION})
+            except RuntimeError as e:  # columns arrive with migration 0010
+                print(f"warn: score_at_time not saved ({str(e)[:100]})")
+        n += 1
     return n
+
+
+def rate_trip(cfg: Config, spot, weather_payload: dict, marine_payload: dict | None,
+              start: pd.Timestamp, end: pd.Timestamp) -> dict | None:
+    """The app's rating for the hours actually fished, from measured (analysed) conditions."""
+    try:
+        feats = build_features(spot, weather_payload, marine_payload, start)
+        return rate_period(cfg, spot, feats, start, max(end, start + pd.Timedelta(hours=1)))
+    except Exception as e:  # never let rating break the backfill
+        print(f"warn: could not rate trip at {spot.id}: {e}")
+        return None
