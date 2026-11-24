@@ -8,7 +8,8 @@ import { api } from "./api";
 type Op =
   | { kind: "upsert"; table: string; row: Record<string, unknown> }
   | { kind: "update"; table: string; id: string; patch: Record<string, unknown> }
-  | { kind: "photo"; path: string };
+  | { kind: "photo"; path: string }
+  | { kind: "delete"; table: string; match: Record<string, string> };
 
 const DB = "condfishions";
 let dbp: Promise<IDBDatabase> | null = null;
@@ -75,6 +76,8 @@ export async function flush(): Promise<void> {
         await api.upsert(op.table, op.row);
       } else if (op.kind === "update") {
         await api.update(op.table, op.id, op.patch);
+      } else if (op.kind === "delete") {
+        await api.deleteWhere(op.table, op.match);
       } else {
         const blob = await getBlob(op.path);
         if (blob) await api.uploadPhoto(op.path, blob);

@@ -109,6 +109,10 @@ export interface Trip {
   checkin_lon: number | null;
   skunked: boolean | null;
   notes: string | null;
+  logged_after?: boolean;
+  times_edited_at?: string | null;
+  score_at_time?: number | null;
+  planned_trip_id?: string | null;
 }
 
 export interface Catch {
@@ -119,7 +123,14 @@ export interface Catch {
   count: number;
   max_length_cm: number | null;
   caught_at: string;
+  /** "bait" or "lure" */
+  method?: TackleKind | null;
+  /** which bait or lure, e.g. "Prawn", "Soft plastic" */
+  tackle?: string | null;
+  released?: number | boolean | null;
 }
+
+export type TackleKind = "bait" | "lure";
 
 export interface PhotoRow {
   id: string;
@@ -129,6 +140,46 @@ export interface PhotoRow {
   taken_at: string;
 }
 
-export interface TripSummary extends Trip { catches: { species_id: string; count: number }[] }
+export interface TripCatch {
+  id: string; species_id: string; count: number; max_length_cm: number | null; caught_at: string | null;
+  method: TackleKind | null; tackle: string | null; released: number | null;
+}
+export interface TripSummary extends Trip { catches: TripCatch[] }
+
+/** Everything about one finished trip, for the trip page. */
+export interface TripDetail extends TripSummary {
+  photos: { catch_id: string | null; url: string }[];
+  observed: { source: string; vals: Record<string, unknown> }[];
+}
+
+/** One fish for the "My catches" page. */
+export interface CatchRecord extends TripCatch {
+  session_id: string; spot_id: string; start_ts: string; photo_url: string | null;
+}
+
+export interface PlanChange { kind: string; severity: 1 | 2; text: string }
+
+/** A booked fishing slot. The scorer re-rates it every run and notes changes for the worse. */
+export interface PlannedTrip {
+  id: string;
+  spot_id: string;
+  block_start: string;
+  block_hours: number;
+  part: string | null;
+  score_booked: number | null;
+  safety_booked: string | null;
+  conditions_booked: Record<string, number | string | null>;
+  score_now: number | null;
+  safety_now: string | null;
+  safety_text_now: string | null;
+  conditions_now: Record<string, number | string | null> | null;
+  checked_at: string | null;
+  changes: PlanChange[];
+  alerted_at: string | null;
+  seen_at: string | null;
+  status: "planned" | "done" | "cancelled" | "past";
+  session_id: string | null;
+  created_at: string;
+}
 
 export interface SpotPhoto { id: string; url: string; taken_at: string; species_id: string | null; length: number | null }

@@ -30,6 +30,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,png,svg}"],
+        importScripts: ["push-sw.js"],  // trip alerts (web push)
         navigateFallbackDenylist: [/^\/demo\//],
         runtimeCaching: [
           {

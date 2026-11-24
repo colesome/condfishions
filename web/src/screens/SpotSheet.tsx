@@ -7,7 +7,8 @@ import { COMFORT, comfortOf, weatherLine } from "../lib/comfort";
 import { fishDay, partOf } from "../lib/parts";
 import { fmtRange, fmtWhen, sameDay } from "../lib/time";
 import { fmtTravel } from "../lib/travel";
-import type { Score, Species, Spot, SpotPhoto, Tide, TripSummary } from "../lib/types";
+import { planFor } from "../lib/plans";
+import type { PlannedTrip, Score, Species, Spot, SpotPhoto, Tide, TripSummary } from "../lib/types";
 import { shortName } from "./Suggest";
 
 interface Props {
@@ -20,7 +21,12 @@ interface Props {
   onGoFish: (scoreShown: number | null) => void;
   onClose: () => void;
   onDeleted: () => void;
+  plans: PlannedTrip[];
+  onBook: (b: Block) => Promise<void>;
+  onCalendar: (p: PlannedTrip) => void;
 }
+
+type Block = ReturnType<typeof toBlocks>[number];
 
 type Tab = "times" | "tide" | "photos";
 
@@ -28,7 +34,7 @@ const TYPE_LABEL: Record<string, string> = {
   rock: "Rock platform", rockwall: "Rock wall", beach: "Beach", estuary: "Estuary", jetty: "Jetty",
 };
 
-export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishingHere, onGoFish, onClose, onDeleted }: Props) {
+export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishingHere, onGoFish, onClose, onDeleted, plans, onBook, onCalendar }: Props) {
   const [tab, setTab] = useState<Tab>("times");
   const [rows, setRows] = useState<Score[] | null>(null);
   const [tide, setTide] = useState<Tide | null | undefined>(undefined);
@@ -135,7 +141,8 @@ export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishing
                 })}
               </div>
               {sel && bl.includes(sel) && (
-                <BlockDetail b={sel} spName={spName} now={now} onTide={spot.tidal ? () => setTab("tide") : undefined} />
+                <BlockDetail b={sel} spName={spName} now={now} onTide={spot.tidal ? () => setTab("tide") : undefined}
+                  plan={planFor(plans, spot.id, sel.block_start, sel.block_hours)} onBook={onBook} onCalendar={onCalendar} />
               )}
             </section>
           ))}
@@ -206,10 +213,13 @@ export function SpotSheet({ spot, species, travelMin, now, initialBlock, fishing
   );
 }
 
-function BlockDetail({ b, spName, now, onTide }: {
-  b: ReturnType<typeof toBlocks>[number]; spName: (id: string) => string; now: Date; onTide?: () => void;
+function BlockDetail({ b, spName, now, onTide, plan, onBook, onCalendar }: {
+  b: Block; spName: (id: string) => string; now: Date; onTide?: () => void;
+  plan?: PlannedTrip; onBook: (b: Block) => Promise<void>; onCalendar: (p: PlannedTrip) => void;
 }) {
   const band = bandFor(b.top_score);
+  const [booking, setBooking] = useState(false);
+  const future = new Date(b.block_start).getTime() + b.block_hours * 3600_000 > now.getTime();
   return (
     <div className="detail">
       <div className="detail-when">{fmtWhen(b.block_start, b.block_hours, now)}</div>
@@ -239,6 +249,17 @@ function BlockDetail({ b, spName, now, onTide }: {
             })}
           </ul>
           {b.species[0] && <Conditions c={b.species[0].conditions} />}
+          {future && (plan ? (
+            <div className="booked-line">
+              <span>✅ Booked — we'll tell you if it gets worse</span>
+              <button className="link small-link" onClick={() => onCalendar(plan)}>📅 Add to calendar</button>
+            </div>
+          ) : (
+            <button className="btn btn-secondary wide" disabled={booking}
+              onClick={async () => { setBooking(true); try { await onBook(b); } finally { setBooking(false); } }}>
+              {booking ? "Booking…" : "📅 Book this time & add to calendar"}
+            </button>
+          ))}
           {onTide && <button className="link small-link" onClick={onTide}>See this time on the tide chart ›</button>}
         </>
       )}

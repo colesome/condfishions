@@ -20,6 +20,8 @@ from .config import Home, Spot, load_config, spots_in_range
 from .features import FEATURE_VERSION, build_features
 from .fetch import fetch_all
 from .observed import backfill
+from .plans import check_plans
+from .push import send as push_send
 from .scoring import MODEL_VERSION, score_spot
 from .store import Store
 from .verify import circ_mean, run_checks
@@ -221,9 +223,13 @@ def main(argv: list[str] | None = None) -> int:
         store.upsert("tides", _tide_rows(run_id, feats_by_spot, cfg.spots), on_conflict="spot_id")
     except RuntimeError as e:  # tides table arrives with migration 0006
         problems.append(f"tides not saved: {str(e)[:120]}")
+    try:  # booked slots: re-rate, note changes for the worse, push to the phone
+        problems.extend(check_plans(cfg, store, feats_by_spot, now, send=push_send))
+    except Exception as e:  # never let alerts break scoring
+        problems.append(f"booked slots check failed: {str(e)[:120]}")
     if archive:
         try:
-            n = backfill(cfg, store)
+            n = backfill(cfg, store, now=now)
             print(f"backfilled measured conditions for {n} trips")
         except Exception as e:  # never let backfill break scoring
             print(f"warn: backfill failed: {e}")

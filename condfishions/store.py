@@ -95,6 +95,17 @@ class Store:
         if r.status_code >= 300:
             raise RuntimeError(f"delete {table} failed {r.status_code}: {r.text[:500]}")
 
+    def update(self, table: str, params: dict, patch: dict) -> None:
+        """PATCH rows matching PostgREST filters. `params` must not be empty."""
+        if not self.enabled:
+            return
+        if not params:
+            raise ValueError("update needs at least one filter")
+        r = requests.patch(f"{self.url}/rest/v1/{table}", params=params,
+                           headers=self._h({"Prefer": "return=minimal"}), data=dumps(patch), timeout=60)
+        if r.status_code >= 300:
+            raise RuntimeError(f"update {table} failed {r.status_code}: {r.text[:500]}")
+
     def get_settings(self) -> dict | None:
         """Home location etc. set from the app (settings table, single row id=1)."""
         if not self.enabled:
@@ -117,14 +128,17 @@ class Store:
         return r.json()
 
     def sessions_needing_backfill(self, days: int = 4) -> list[dict]:
-        """Finished trips from the last `days` days without an 'archive' observation."""
+        """Finished trips from the last `days` days without an 'archive' observation.
+
+        Editing a trip's times in the app removes its 'archive' observation, so it comes back here.
+        """
         if not self.enabled:
             return []
         import datetime as dt
         since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).isoformat()
         r = requests.get(f"{self.url}/rest/v1/sessions",
                          params={"select": "id,spot_id,start_ts,end_ts,observed_conditions(source)",
-                                 "end_ts": f"gte.{since}"},
+                                 "end_ts": f"gte.{since}", "order": "end_ts"},
                          headers=self._h(), timeout=60)
         if r.status_code >= 300:
             print(f"warn: could not load sessions ({r.status_code})")
